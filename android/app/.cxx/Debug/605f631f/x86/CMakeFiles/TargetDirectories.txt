@@ -1,0 +1,2 @@
+C:/myProjects/workout_tracker/android/app/.cxx/Debug/605f631f/x86/CMakeFiles/edit_cache.dir
+C:/myProjects/workout_tracker/android/app/.cxx/Debug/605f631f/x86/CMakeFiles/rebuild_cache.dir

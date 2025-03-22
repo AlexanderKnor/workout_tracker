@@ -1,0 +1,385 @@
+{
+    "version": "1.0",
+    "categories": [
+        {
+            "id": "chest",
+            "name": "Brust"
+        },
+        {
+            "id": "back",
+            "name": "Rücken"
+        },
+        {
+            "id": "legs",
+            "name": "Beine"
+        },
+        {
+            "id": "shoulders",
+            "name": "Schultern"
+        },
+        {
+            "id": "arms",
+            "name": "Arme"
+        },
+        {
+            "id": "core",
+            "name": "Core"
+        },
+        {
+            "id": "cardio",
+            "name": "Cardio"
+        }
+    ],
+    "exercises": [
+        {
+            "id": "bench_press",
+            "name": "Bankdrücken",
+            "categoryId": "chest",
+            "description": "Eine Grundübung für die Brust, bei der eine Langhantel von der Brust nach oben gedrückt wird.",
+            "defaultSets": 3,
+            "defaultMinReps": 8,
+            "defaultMaxReps": 12,
+            "defaultRIR": 2
+        },
+        {
+            "id": "incline_bench",
+            "name": "Schrägbankdrücken",
+            "categoryId": "chest",
+            "description": "Bankdrücken auf einer schrägen Bank, fokussiert mehr auf die obere Brust.",
+            "defaultSets": 3,
+            "defaultMinReps": 8,
+            "defaultMaxReps": 12,
+            "defaultRIR": 2
+        },
+        {
+            "id": "pushups",
+            "name": "Liegestütze",
+            "categoryId": "chest",
+            "description": "Klassische Übung für Brust, Schultern und Trizeps mit dem eigenen Körpergewicht.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 20,
+            "defaultRIR": 2
+        },
+        {
+            "id": "dumbbell_flyes",
+            "name": "Kurzhantel-Fliegende",
+            "categoryId": "chest",
+            "description": "Isolationsübung für die Brust, bei der die Arme seitlich gestreckt werden.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "cable_crossover",
+            "name": "Kabelkreuz",
+            "categoryId": "chest",
+            "description": "Isolationsübung für die Brust mit Kabelzug.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "pull_ups",
+            "name": "Klimmzüge",
+            "categoryId": "back",
+            "description": "Grundübung für den Rücken und Bizeps mit eigenem Körpergewicht.",
+            "defaultSets": 3,
+            "defaultMinReps": 6,
+            "defaultMaxReps": 12,
+            "defaultRIR": 2
+        },
+        {
+            "id": "lat_pulldown",
+            "name": "Latzug",
+            "categoryId": "back",
+            "description": "Übung für den breiten Rückenmuskel mit Kabelzug von oben.",
+            "defaultSets": 3,
+            "defaultMinReps": 8,
+            "defaultMaxReps": 12,
+            "defaultRIR": 2
+        },
+        {
+            "id": "bent_over_row",
+            "name": "Vorgebeugtes Rudern",
+            "categoryId": "back",
+            "description": "Grundübung für den gesamten Rücken mit Langhantel.",
+            "defaultSets": 3,
+            "defaultMinReps": 8,
+            "defaultMaxReps": 12,
+            "defaultRIR": 2
+        },
+        {
+            "id": "deadlift",
+            "name": "Kreuzheben",
+            "categoryId": "back",
+            "description": "Komplexe Grundübung für Rücken, Beine und Core.",
+            "defaultSets": 3,
+            "defaultMinReps": 6,
+            "defaultMaxReps": 10,
+            "defaultRIR": 2
+        },
+        {
+            "id": "seated_row",
+            "name": "Rudern sitzend",
+            "categoryId": "back",
+            "description": "Übung für den mittleren Rücken mit Kabelzug oder Maschine.",
+            "defaultSets": 3,
+            "defaultMinReps": 8,
+            "defaultMaxReps": 12,
+            "defaultRIR": 2
+        },
+        {
+            "id": "squat",
+            "name": "Kniebeuge",
+            "categoryId": "legs",
+            "description": "Grundübung für die Beine, bei der eine Langhantel auf den Schultern getragen wird.",
+            "defaultSets": 4,
+            "defaultMinReps": 6,
+            "defaultMaxReps": 12,
+            "defaultRIR": 2
+        },
+        {
+            "id": "leg_press",
+            "name": "Beinpresse",
+            "categoryId": "legs",
+            "description": "Maschinen-Übung für Quadrizeps, Gesäß und Oberschenkel-Rückseite.",
+            "defaultSets": 3,
+            "defaultMinReps": 8,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "lunges",
+            "name": "Ausfallschritte",
+            "categoryId": "legs",
+            "description": "Übung für Oberschenkel und Gesäß mit oder ohne Zusatzgewicht.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "leg_extension",
+            "name": "Beinstrecker",
+            "categoryId": "legs",
+            "description": "Isolationsübung für den Quadrizeps an der Maschine.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "leg_curl",
+            "name": "Beinbeuger",
+            "categoryId": "legs",
+            "description": "Isolationsübung für die hintere Oberschenkelmuskulatur.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "overhead_press",
+            "name": "Schulterdrücken",
+            "categoryId": "shoulders",
+            "description": "Grundübung für die Schultern mit Langhantel.",
+            "defaultSets": 3,
+            "defaultMinReps": 6,
+            "defaultMaxReps": 12,
+            "defaultRIR": 2
+        },
+        {
+            "id": "lateral_raise",
+            "name": "Seitheben",
+            "categoryId": "shoulders",
+            "description": "Isolationsübung für die seitlichen Deltamuskel.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "front_raise",
+            "name": "Frontheben",
+            "categoryId": "shoulders",
+            "description": "Isolationsübung für die vorderen Deltamuskel.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "face_pull",
+            "name": "Face Pull",
+            "categoryId": "shoulders",
+            "description": "Übung für die hintere Schultermuskulatur mit Seil am Kabelzug.",
+            "defaultSets": 3,
+            "defaultMinReps": 12,
+            "defaultMaxReps": 20,
+            "defaultRIR": 2
+        },
+        {
+            "id": "reverse_flyes",
+            "name": "Reverse Flys",
+            "categoryId": "shoulders",
+            "description": "Übung für die hintere Schultermuskulatur mit Kurzhanteln.",
+            "defaultSets": 3,
+            "defaultMinReps": 12,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "bicep_curl",
+            "name": "Bizeps-Curl",
+            "categoryId": "arms",
+            "description": "Isolationsübung für den Bizeps mit Kurzhanteln oder Langhantel.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "hammer_curl",
+            "name": "Hammer-Curl",
+            "categoryId": "arms",
+            "description": "Bizeps- und Unterarmübung mit neutraler Handposition.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "tricep_pushdown",
+            "name": "Trizepsdrücken am Kabelzug",
+            "categoryId": "arms",
+            "description": "Isolationsübung für den Trizeps am Kabelzug.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "skull_crusher",
+            "name": "Skull Crusher",
+            "categoryId": "arms",
+            "description": "Trizepsübung im Liegen mit Langhantel oder EZ-Stange.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "dips",
+            "name": "Dips",
+            "categoryId": "arms",
+            "description": "Übung für Trizeps und Brust mit dem eigenen Körpergewicht.",
+            "defaultSets": 3,
+            "defaultMinReps": 8,
+            "defaultMaxReps": 15,
+            "defaultRIR": 2
+        },
+        {
+            "id": "plank",
+            "name": "Plank",
+            "categoryId": "core",
+            "description": "Statische Übung für die Körpermitte und Stabilität.",
+            "defaultSets": 3,
+            "defaultMinReps": 30,
+            "defaultMaxReps": 60,
+            "defaultRIR": 1
+        },
+        {
+            "id": "crunches",
+            "name": "Crunches",
+            "categoryId": "core",
+            "description": "Grundübung für die gerade Bauchmuskulatur.",
+            "defaultSets": 3,
+            "defaultMinReps": 15,
+            "defaultMaxReps": 25,
+            "defaultRIR": 2
+        },
+        {
+            "id": "russian_twist",
+            "name": "Russian Twist",
+            "categoryId": "core",
+            "description": "Rotationsübung für die schräge Bauchmuskulatur.",
+            "defaultSets": 3,
+            "defaultMinReps": 15,
+            "defaultMaxReps": 25,
+            "defaultRIR": 2
+        },
+        {
+            "id": "leg_raises",
+            "name": "Beinheben",
+            "categoryId": "core",
+            "description": "Übung für die untere Bauchmuskulatur.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 20,
+            "defaultRIR": 2
+        },
+        {
+            "id": "mountain_climbers",
+            "name": "Mountain Climbers",
+            "categoryId": "core",
+            "description": "Dynamische Übung für die Körpermitte und Cardio.",
+            "defaultSets": 3,
+            "defaultMinReps": 20,
+            "defaultMaxReps": 30,
+            "defaultRIR": 2
+        },
+        {
+            "id": "running",
+            "name": "Laufen",
+            "categoryId": "cardio",
+            "description": "Grundlegende Cardio-Übung für die allgemeine Ausdauer.",
+            "defaultSets": 1,
+            "defaultMinReps": 20,
+            "defaultMaxReps": 30,
+            "defaultRIR": 1
+        },
+        {
+            "id": "cycling",
+            "name": "Radfahren",
+            "categoryId": "cardio",
+            "description": "Gelenkschonende Cardio-Übung auf dem Fahrrad oder Ergometer.",
+            "defaultSets": 1,
+            "defaultMinReps": 20,
+            "defaultMaxReps": 30,
+            "defaultRIR": 1
+        },
+        {
+            "id": "rowing",
+            "name": "Rudern",
+            "categoryId": "cardio",
+            "description": "Cardio-Übung, die viele Muskelgruppen beansprucht.",
+            "defaultSets": 1,
+            "defaultMinReps": 15,
+            "defaultMaxReps": 25,
+            "defaultRIR": 1
+        },
+        {
+            "id": "jumping_rope",
+            "name": "Seilspringen",
+            "categoryId": "cardio",
+            "description": "Intensive Cardio-Übung für Koordination und Ausdauer.",
+            "defaultSets": 3,
+            "defaultMinReps": 1,
+            "defaultMaxReps": 3,
+            "defaultRIR": 1
+        },
+        {
+            "id": "burpees",
+            "name": "Burpees",
+            "categoryId": "cardio",
+            "description": "Hochintensive Ganzkörper-Übung für Kraft und Ausdauer.",
+            "defaultSets": 3,
+            "defaultMinReps": 10,
+            "defaultMaxReps": 20,
+            "defaultRIR": 1
+        }
+    ]
+}
