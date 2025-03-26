@@ -1,8 +1,9 @@
-// workout_provider.dart
+// lib/providers/workout_provider.dart
 import 'package:flutter/material.dart';
 import 'dart:math';
 import '../models/models.dart';
 import '../services/exercise_service.dart';
+import '../services/database_service.dart';
 
 class WorkoutTrackerState extends ChangeNotifier {
   List<TrainingPlan> _plans = [];
@@ -12,7 +13,10 @@ class WorkoutTrackerState extends ChangeNotifier {
   Exercise? _currentExercise;
   List<SetLog> _workoutLog = [];
 
-  // ÃƒÅ“bungsdatenbank
+  // Neue Datenbankinstanz
+  final DatabaseService _databaseService = DatabaseService();
+
+  // Exercise database
   final ExerciseDatabase _exerciseDb = ExerciseDatabase();
   bool _isExerciseDbLoaded = false;
   String _selectedCategoryId = '';
@@ -60,29 +64,51 @@ class WorkoutTrackerState extends ChangeNotifier {
   // Exercise selection mode flag
   bool _isSelectingFromDatabase = false;
 
-  WorkoutTrackerState() {
-    _initSampleData();
+  // Flag für initialen Ladevorgang
+  bool _isLoading = true;
 
-    // Initialize calculator controllers
+  // Getter für Ladevorgang
+  bool get isLoading => _isLoading;
+
+  WorkoutTrackerState() {
+    // Initialisiere Controller für Rechner
     testWeightController = TextEditingController(text: _testWeight);
     testRepsController = TextEditingController(text: _testReps);
     targetRepsController = TextEditingController(text: _targetReps);
     targetRIRController = TextEditingController(text: _targetRIR);
 
-    // Initialize default training day names
+    // Initialisiere Standard-Trainingstagnamen
     _initDefaultTrainingDayNames();
 
-    // Load exercise database
+    // Daten aus der Datenbank laden
+    _loadData();
+
+    // Übungsdatenbank laden
     _loadExerciseDatabase();
   }
 
-  void _initSampleData() {
-    // Initialize with empty data
-    _plans = [];
-    _savedWorkouts = [];
+  // Lade Daten aus der Datenbank
+  Future<void> _loadData() async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Trainingspläne laden
+      _plans = await _databaseService.getTrainingPlans();
+
+      // Workout-Logs laden
+      _savedWorkouts = await _databaseService.getWorkoutLogs();
+
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      print('Fehler beim Laden der Daten: $e');
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  // Load the exercise database
+  // Lade die Übungsdatenbank
   Future<void> _loadExerciseDatabase() async {
     if (!_isExerciseDbLoaded) {
       await _exerciseDb.loadDatabase();
@@ -149,7 +175,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   int get newExerciseRIR => _newExerciseRIR;
   String get newExerciseDescription => _newExerciseDescription;
 
-  // ÃƒÅ“bungsdatenbank getters
+  // Exercise database getters
   bool get isExerciseDbLoaded => _isExerciseDbLoaded;
   String get selectedCategoryId => _selectedCategoryId;
   String get exerciseSearchQuery => _exerciseSearchQuery;
@@ -211,7 +237,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   }) {
     if (_currentPlan == null || _currentDay == null) return;
 
-    // Erstelle eine neue ÃƒÅ“bung mit benutzerdefinierten oder Standardwerten
+    // Create a new exercise with custom or default values
     Exercise newExercise = Exercise(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: template.name,
@@ -225,7 +251,22 @@ class WorkoutTrackerState extends ChangeNotifier {
 
     _currentDay!.exercises.add(newExercise);
     _isSelectingFromDatabase = false; // Close selection mode
+
+    // Plan in der Datenbank aktualisieren
+    _updatePlanInDatabase();
+
     notifyListeners();
+  }
+
+  // Aktualisierten Plan in der Datenbank speichern
+  Future<void> _updatePlanInDatabase() async {
+    if (_currentPlan != null) {
+      try {
+        await _databaseService.updateTrainingPlan(_currentPlan!);
+      } catch (e) {
+        print('Fehler beim Aktualisieren des Plans: $e');
+      }
+    }
   }
 
   // Setters for training plan creation
@@ -419,7 +460,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     // Actual max reps = Performed reps + RIR
     int totalReps = reps + rir;
 
-    // Brzycki formula: 1RM = Weight Ã…Â¸ (36 / (37 - Reps))
+    // Brzycki formula: 1RM = Weight × (36 / (37 - Reps))
     if (totalReps >= 36)
       return weight * 1.0; // For very high rep counts, formula is not accurate
 
@@ -440,7 +481,7 @@ class WorkoutTrackerState extends ChangeNotifier {
 
     int effectiveReps = targetReps + targetRIR;
 
-    // Reverse Brzycki formula: Weight = 1RM Ã…Â¸ ((37 - effective reps) / 36)
+    // Reverse Brzycki formula: Weight = 1RM × ((37 - effective reps) / 36)
     double weight = oneRM * ((37 - effectiveReps) / 36);
 
     // Round to nearest 0.5 kg
@@ -472,7 +513,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     int userTargetRIR = int.tryParse(_targetRIR) ?? _currentExercise!.targetRIR;
     int effectiveReps = userTargetReps + userTargetRIR; // Consider RIR
 
-    // Reverse formula: Weight = 1RM Ã…Â¸ ((37 - effective reps) / 36)
+    // Reverse formula: Weight = 1RM × ((37 - effective reps) / 36)
     double idealWeight = oneRM * ((37 - effectiveReps) / 36);
 
     // Round to nearest 0.5 kg
@@ -557,7 +598,7 @@ class WorkoutTrackerState extends ChangeNotifier {
         reps: _currentExercise!.minReps.toString(),
         rir: _currentExercise!.targetRIR.toString(),
         reason:
-            'Keine vollstÃƒÂ¤ndigen Trainingsdaten verfÃƒÂ¼gbar. Beginne mit deinen Zielwerten.',
+            'No complete training data available. Start with your target values.',
       );
       notifyListeners();
       return;
@@ -580,7 +621,7 @@ class WorkoutTrackerState extends ChangeNotifier {
         reps: lastReps.toString(),
         rir: (min(lastRIR + 1, targetRIR)).toString(),
         reason:
-            'Dein letztes RIR ($lastRIR) war niedriger als das Ziel ($targetRIR). Fokussiere dich darauf, deine Erholung zu verbessern.',
+            'Your last RIR ($lastRIR) was lower than target ($targetRIR). Focus on improving recovery.',
       );
     }
     // Case 2: RIR is at target or 1 below, and reps can be increased
@@ -589,8 +630,7 @@ class WorkoutTrackerState extends ChangeNotifier {
         weight: lastWeight.toString(),
         reps: (lastReps + 1).toString(),
         rir: lastRIR.toString(),
-        reason:
-            'Du kannst deine Wiederholungen von $lastReps auf ${lastReps + 1} steigern.',
+        reason: 'You can increase your reps from $lastReps to ${lastReps + 1}.',
       );
     }
     // Case 3: Max reps reached, increase weight and reset reps to min
@@ -607,7 +647,7 @@ class WorkoutTrackerState extends ChangeNotifier {
         reps: targetMinReps.toString(),
         rir: targetRIR.toString(),
         reason:
-            'Du hast die maximalen Wiederholungen ($targetMaxReps) erreicht. ErhÃƒÂ¶he das Gewicht und starte wieder bei $targetMinReps Wiederholungen.',
+            'You\'ve reached max reps ($targetMaxReps). Increase weight and restart at $targetMinReps reps.',
       );
     }
 
@@ -708,7 +748,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   }
 
   // Finish and save workout
-  void finishWorkout() {
+  Future<void> finishWorkout() async {
     if (_workoutLog.isNotEmpty && _currentPlan != null && _currentDay != null) {
       WorkoutLog completedWorkout = WorkoutLog(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -721,6 +761,13 @@ class WorkoutTrackerState extends ChangeNotifier {
       );
 
       _savedWorkouts.add(completedWorkout);
+
+      // In der Datenbank speichern
+      try {
+        await _databaseService.saveWorkoutLog(completedWorkout);
+      } catch (e) {
+        print('Fehler beim Speichern des Workout-Logs: $e');
+      }
     }
 
     // Reset states
@@ -929,7 +976,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   }
 
   // Create a new training plan with multiple days
-  void createNewPlan() {
+  Future<void> createNewPlan() async {
     if (_newPlanName.trim().isEmpty) return;
 
     List<TrainingDay> trainingDays = [];
@@ -955,6 +1002,13 @@ class WorkoutTrackerState extends ChangeNotifier {
       _currentDay = trainingDays[0];
     }
 
+    // In der Datenbank speichern
+    try {
+      await _databaseService.saveTrainingPlan(newPlan);
+    } catch (e) {
+      print('Fehler beim Speichern des neuen Plans: $e');
+    }
+
     // Reset form state
     _newPlanName = '';
     _numberOfTrainingDays = 3;
@@ -965,7 +1019,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   }
 
   // Add exercise to current training day
-  void addExerciseToPlan() {
+  Future<void> addExerciseToPlan() async {
     if (_newExerciseName.trim().isEmpty ||
         _currentPlan == null ||
         _currentDay == null) return;
@@ -985,26 +1039,39 @@ class WorkoutTrackerState extends ChangeNotifier {
     _newExerciseName = '';
     _newExerciseDescription = '';
 
+    // Plan in der Datenbank aktualisieren
+    await _updatePlanInDatabase();
+
     notifyListeners();
   }
 
   // Delete exercise from current training day
-  void deleteExercise(String exerciseId) {
+  Future<void> deleteExercise(String exerciseId) async {
     if (_currentPlan == null || _currentDay == null) return;
 
     _currentDay!.exercises.removeWhere((ex) => ex.id == exerciseId);
+
+    // Plan in der Datenbank aktualisieren
+    await _updatePlanInDatabase();
 
     notifyListeners();
   }
 
   // Delete a training plan
-  void deletePlan(String planId) {
+  Future<void> deletePlan(String planId) async {
     _plans.removeWhere((plan) => plan.id == planId);
 
     // Clear current plan if it was the deleted one
     if (_currentPlan != null && _currentPlan!.id == planId) {
       _currentPlan = null;
       _currentDay = null;
+    }
+
+    // Aus der Datenbank löschen
+    try {
+      await _databaseService.deleteTrainingPlan(planId);
+    } catch (e) {
+      print('Fehler beim Löschen des Plans: $e');
     }
 
     notifyListeners();
@@ -1032,5 +1099,15 @@ class WorkoutTrackerState extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposeControllers();
+    testWeightController.dispose();
+    testRepsController.dispose();
+    targetRepsController.dispose();
+    targetRIRController.dispose();
+    super.dispose();
   }
 }

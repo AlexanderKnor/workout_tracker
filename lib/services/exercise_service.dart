@@ -1,7 +1,6 @@
 // exercise_service.dart
 import 'dart:convert';
 import 'package:flutter/services.dart';
-import '../models/models.dart';
 
 class ExerciseCategory {
   final String id;
