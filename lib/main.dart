@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'providers/workout_provider.dart';
-import 'screens/home_screen.dart';
+import 'screens/home/home_screen.dart';
 import 'screens/create_plan_screen.dart';
 import 'screens/edit_plan_screen.dart';
-import 'screens/workout_screen.dart';
+import 'screens/workout/workout_screen.dart';
 
 void main() async {
   // Diese Zeile ist wichtig, damit Flutter-Bindungen initialisiert sind,
@@ -258,56 +258,111 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   String _currentView = 'plans'; // 'plans', 'create', 'edit', 'workout'
+  String _previousView = 'plans'; // Track the previous view for back navigation
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _buildCurrentView(),
+    return WillPopScope(
+      onWillPop: () async {
+        // If we're on the home screen, allow the app to close
+        if (_currentView == 'plans') {
+          return true;
+        }
+
+        // Otherwise, handle back navigation and prevent app from closing
+        _goBack();
+        return false;
+      },
+      child: Scaffold(
+        body: _buildCurrentView(),
+      ),
     );
+  }
+
+  // Navigate to a new view while preserving history
+  void _navigateTo(String view) {
+    setState(() {
+      _previousView = _currentView;
+      _currentView = view;
+    });
+  }
+
+  // Navigate directly to the plans view (home screen)
+  void _navigateToHome() {
+    setState(() {
+      _previousView = 'plans'; // Set this so back button works correctly after
+      _currentView = 'plans';
+    });
+  }
+
+  // Go back to the previous view
+  void _goBack() {
+    // Check if we need to discard a draft plan
+    if (_currentView == 'edit') {
+      final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+      if (!state.isPlanSaved) {
+        // When going back from edit screen with unsaved plan, check if it's empty
+        // and we're returning to the create screen
+        if (_previousView == 'create') {
+          state.discardCurrentPlan();
+        }
+      }
+    }
+
+    setState(() {
+      _currentView = _previousView;
+      // Default to plans if previous view is the same as current
+      // (this prevents navigation loops)
+      if (_previousView == _currentView) {
+        _previousView = 'plans';
+      }
+    });
   }
 
   Widget _buildCurrentView() {
     switch (_currentView) {
       case 'plans':
         return HomeScreen(
-          onCreatePressed: () => setState(() => _currentView = 'create'),
+          onCreatePressed: () => _navigateTo('create'),
           onEditPressed: (plan) {
             Provider.of<WorkoutTrackerState>(context, listen: false)
                 .setCurrentPlan(plan);
-            setState(() => _currentView = 'edit');
+            _navigateTo('edit');
           },
           onWorkoutPressed: (plan, day) {
             Provider.of<WorkoutTrackerState>(context, listen: false)
                 .startWorkout(plan, day);
-            setState(() => _currentView = 'workout');
+            _navigateTo('workout');
           },
         );
       case 'create':
         return CreatePlanScreen(
-          onBackPressed: () => setState(() => _currentView = 'plans'),
-          onPlanCreated: () => setState(() => _currentView = 'edit'),
+          onBackPressed: _goBack,
+          onPlanCreated: () => _navigateTo('edit'),
         );
       case 'edit':
         return EditPlanScreen(
-          onBackPressed: () => setState(() => _currentView = 'plans'),
+          onBackPressed: _goBack,
+          onDiscardAndGoHome:
+              _navigateToHome, // Add new callback for direct home navigation
         );
       case 'workout':
         return WorkoutScreen(
-          onBackPressed: () => setState(() => _currentView = 'plans'),
-          onFinished: () => setState(() => _currentView = 'plans'),
+          onBackPressed: _goBack,
+          onFinished: () => _navigateTo('plans'),
         );
       default:
         return HomeScreen(
-          onCreatePressed: () => setState(() => _currentView = 'create'),
+          onCreatePressed: () => _navigateTo('create'),
           onEditPressed: (plan) {
             Provider.of<WorkoutTrackerState>(context, listen: false)
                 .setCurrentPlan(plan);
-            setState(() => _currentView = 'edit');
+            _navigateTo('edit');
           },
           onWorkoutPressed: (plan, day) {
             Provider.of<WorkoutTrackerState>(context, listen: false)
                 .startWorkout(plan, day);
-            setState(() => _currentView = 'workout');
+            _navigateTo('workout');
           },
         );
     }

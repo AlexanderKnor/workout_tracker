@@ -13,6 +13,9 @@ class WorkoutTrackerState extends ChangeNotifier {
   Exercise? _currentExercise;
   List<SetLog> _workoutLog = [];
 
+  // Flag to track if current plan is saved to database
+  bool _isPlanSaved = true;
+
   // Neue Datenbankinstanz
   final DatabaseService _databaseService = DatabaseService();
 
@@ -69,6 +72,21 @@ class WorkoutTrackerState extends ChangeNotifier {
 
   // Getter für Ladevorgang
   bool get isLoading => _isLoading;
+
+  // Getter for plan saved status
+  bool get isPlanSaved => _isPlanSaved;
+
+  // Eine Methode, die State-Änderungen sicher ausführt
+  void safeUpdate(Function updateFunction) {
+    // Verzögere State-Änderung auf die nächste Frame-Verarbeitung
+    Future.microtask(() {
+      try {
+        updateFunction();
+      } catch (e) {
+        print('Error in safeUpdate: $e');
+      }
+    });
+  }
 
   WorkoutTrackerState() {
     // Initialisiere Controller für Rechner
@@ -252,8 +270,10 @@ class WorkoutTrackerState extends ChangeNotifier {
     _currentDay!.exercises.add(newExercise);
     _isSelectingFromDatabase = false; // Close selection mode
 
-    // Plan in der Datenbank aktualisieren
-    _updatePlanInDatabase();
+    // Plan in der Datenbank aktualisieren, falls bereits gespeichert
+    if (_isPlanSaved) {
+      _updatePlanInDatabase();
+    }
 
     notifyListeners();
   }
@@ -407,6 +427,31 @@ class WorkoutTrackerState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Setze die aktuelle Übung basierend auf einem Index im Trainingstag
+  void setCurrentExerciseByIndex(int index) {
+    if (_currentDay == null ||
+        index < 0 ||
+        index >= _currentDay!.exercises.length) return;
+
+    Exercise selectedExercise = _currentDay!.exercises[index];
+
+    // Wenn die aktuelle Übung bereits die ausgewählte ist, nichts tun
+    if (_currentExercise?.id == selectedExercise.id) return;
+
+    // Speichere Daten der aktuellen Übung, falls vorhanden
+    if (_currentExercise != null) {
+      // Optional: Hier könnten wir unvollständige Sets speichern, bevor wir die Übung wechseln
+    }
+
+    _currentExercise = selectedExercise;
+    _currentSetIndex = 0; // Setze Fokus auf das erste Set der neuen Übung
+
+    // Initialisiere die Sets für die neue Übung
+    _initializeExerciseSets(selectedExercise);
+
+    notifyListeners();
+  }
+
   // Apply progression suggestion to a specific set
   void applyProgressionSuggestionToSet(int setIndex) {
     if (_progressionSuggestion == null ||
@@ -519,6 +564,13 @@ class WorkoutTrackerState extends ChangeNotifier {
     // Round to nearest 0.5 kg
     _calculatedWeight = (idealWeight * 2).round() / 2;
     notifyListeners();
+  }
+
+  // Sichere Version der calculateIdealWorkingWeight Methode
+  void safeCalculateIdealWorkingWeight() {
+    safeUpdate(() {
+      calculateIdealWorkingWeight();
+    });
   }
 
   // Check if we have valid data in saved workouts
@@ -676,6 +728,13 @@ class WorkoutTrackerState extends ChangeNotifier {
     }
   }
 
+  // Sichere Version von acceptProgressionSuggestion
+  void safeAcceptProgressionSuggestion() {
+    safeUpdate(() {
+      acceptProgressionSuggestion();
+    });
+  }
+
   // Accept calculated weight for current set only
   void acceptCalculatedWeight() {
     if (_calculatedWeight != null &&
@@ -701,6 +760,13 @@ class WorkoutTrackerState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Sichere Version von acceptCalculatedWeight
+  void safeAcceptCalculatedWeight() {
+    safeUpdate(() {
+      acceptCalculatedWeight();
+    });
+  }
+
   // Open strength calculator
   void openStrengthCalculator() {
     _testWeight = '';
@@ -721,6 +787,13 @@ class WorkoutTrackerState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Sichere Version von openStrengthCalculator
+  void safeOpenStrengthCalculator() {
+    safeUpdate(() {
+      openStrengthCalculator();
+    });
+  }
+
   // Close strength calculator
   void hideStrengthCalculator() {
     _showStrengthCalculator = false;
@@ -730,6 +803,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   // Set current plan
   void setCurrentPlan(TrainingPlan plan) {
     _currentPlan = plan;
+    _isPlanSaved = true; // This is an existing plan from the database
 
     // Set first day as default if available
     if (plan.trainingDays.isNotEmpty) {
@@ -818,6 +892,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   void startWorkout(TrainingPlan plan, TrainingDay day) {
     _currentPlan = plan;
     _currentDay = day;
+    _isPlanSaved = true; // This is an existing plan from the database
 
     Exercise? firstExercise =
         day.exercises.isNotEmpty ? day.exercises[0] : null;
@@ -923,6 +998,13 @@ class WorkoutTrackerState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Sichere Version von logCurrentSet
+  void safeLogCurrentSet() {
+    safeUpdate(() {
+      logCurrentSet();
+    });
+  }
+
   // Find next uncompleted set index
   int _findNextUncompletedSetIndex() {
     // First try to find sets after the current one
@@ -975,6 +1057,13 @@ class WorkoutTrackerState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Sichere Version von moveToNextExercise
+  void safeMoveToNextExercise() {
+    safeUpdate(() {
+      moveToNextExercise();
+    });
+  }
+
   // Create a new training plan with multiple days
   Future<void> createNewPlan() async {
     if (_newPlanName.trim().isEmpty) return;
@@ -1009,6 +1098,9 @@ class WorkoutTrackerState extends ChangeNotifier {
       print('Fehler beim Speichern des neuen Plans: $e');
     }
 
+    // Mark plan as saved
+    _isPlanSaved = true;
+
     // Reset form state
     _newPlanName = '';
     _numberOfTrainingDays = 3;
@@ -1016,6 +1108,97 @@ class WorkoutTrackerState extends ChangeNotifier {
     _selectedDayIndex = 0;
 
     notifyListeners();
+  }
+
+  // Create a plan without saving to database immediately
+  Future<void> createDraftPlan() async {
+    if (_newPlanName.trim().isEmpty) return;
+
+    List<TrainingDay> trainingDays = [];
+
+    // Create training days based on number of days and their names
+    for (int i = 0; i < _numberOfTrainingDays; i++) {
+      trainingDays.add(TrainingDay(
+        id: DateTime.now().millisecondsSinceEpoch.toString() + i.toString(),
+        name: _trainingDayNames[i],
+        exercises: [],
+      ));
+    }
+
+    TrainingPlan newPlan = TrainingPlan(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: _newPlanName,
+      trainingDays: trainingDays,
+    );
+
+    // Set the current plan but don't add to plans list or database yet
+    _currentPlan = newPlan;
+    if (trainingDays.isNotEmpty) {
+      _currentDay = trainingDays[0];
+    }
+
+    // Mark as not saved
+    _isPlanSaved = false;
+
+    // Reset form state
+    _newPlanName = '';
+    _numberOfTrainingDays = 3;
+    _initDefaultTrainingDayNames();
+    _selectedDayIndex = 0;
+
+    notifyListeners();
+  }
+
+  // Check if a plan is valid (has at least one exercise per day)
+  bool isPlanValid(TrainingPlan? plan) {
+    if (plan == null) return false;
+
+    // Check each day has at least one exercise
+    for (var day in plan.trainingDays) {
+      if (day.exercises.isEmpty) {
+        return false;
+      }
+    }
+
+    // All days have at least one exercise
+    return true;
+  }
+
+  // Finalize and save the current plan
+  Future<bool> saveCurrentPlan() async {
+    if (_currentPlan != null && !_isPlanSaved) {
+      // Check if the plan is valid (has at least one exercise per day)
+      if (!isPlanValid(_currentPlan)) {
+        return false; // Plan is not valid
+      }
+
+      // Add to plans list if not already there
+      if (!_plans.any((plan) => plan.id == _currentPlan!.id)) {
+        _plans.add(_currentPlan!);
+      }
+
+      // Save to database
+      try {
+        await _databaseService.saveTrainingPlan(_currentPlan!);
+        _isPlanSaved = true;
+        notifyListeners();
+        return true; // Plan saved successfully
+      } catch (e) {
+        print('Fehler beim Speichern des Plans: $e');
+        return false; // Error saving plan
+      }
+    }
+    return _isPlanSaved; // Already saved or no current plan
+  }
+
+  // Discard the current plan if not saved
+  void discardCurrentPlan() {
+    if (_currentPlan != null && !_isPlanSaved) {
+      _currentPlan = null;
+      _currentDay = null;
+      _isPlanSaved = true;
+      notifyListeners();
+    }
   }
 
   // Add exercise to current training day
@@ -1039,8 +1222,10 @@ class WorkoutTrackerState extends ChangeNotifier {
     _newExerciseName = '';
     _newExerciseDescription = '';
 
-    // Plan in der Datenbank aktualisieren
-    await _updatePlanInDatabase();
+    // Plan in der Datenbank aktualisieren, falls bereits gespeichert
+    if (_isPlanSaved) {
+      await _updatePlanInDatabase();
+    }
 
     notifyListeners();
   }
@@ -1051,8 +1236,10 @@ class WorkoutTrackerState extends ChangeNotifier {
 
     _currentDay!.exercises.removeWhere((ex) => ex.id == exerciseId);
 
-    // Plan in der Datenbank aktualisieren
-    await _updatePlanInDatabase();
+    // Plan in der Datenbank aktualisieren, falls bereits gespeichert
+    if (_isPlanSaved) {
+      await _updatePlanInDatabase();
+    }
 
     notifyListeners();
   }

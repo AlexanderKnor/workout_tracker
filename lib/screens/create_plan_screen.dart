@@ -413,7 +413,8 @@ class _CreatePlanScreenState extends State<CreatePlanScreen>
       onPressed: isValid
           ? () {
               HapticFeedback.mediumImpact();
-              state.createNewPlan();
+              state
+                  .createDraftPlan(); // Changed from createNewPlan() to create a draft instead
               widget.onPlanCreated();
             }
           : null,
