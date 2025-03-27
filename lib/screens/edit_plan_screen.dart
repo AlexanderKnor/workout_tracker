@@ -51,43 +51,77 @@ class _EditPlanScreenState extends State<EditPlanScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+    try {
+      final state = Provider.of<WorkoutTrackerState>(context, listen: false);
 
-    if (state.currentPlan != null &&
-        state.currentPlan!.trainingDays.isNotEmpty &&
-        (_tabController == null ||
-            _tabController!.length != state.currentPlan!.trainingDays.length)) {
-      // Dispose alten Controller, falls vorhanden
-      _tabController?.dispose();
+      // Sichere Initialisierung des TabControllers
+      if (state.currentPlan != null &&
+          state.currentPlan!.trainingDays.isNotEmpty &&
+          (_tabController == null ||
+              _tabController!.length !=
+                  state.currentPlan!.trainingDays.length)) {
+        // Statt sofortiger Disposal, erst überprüfen ob der Controller noch aktiv verwendet wird
+        if (_tabController != null) {
+          _tabController!.removeListener(_handleTabSelection);
 
-      // Initialisiere mit korrektem Index
-      final initialIndex =
-          state.selectedDayIndex < state.currentPlan!.trainingDays.length
-              ? state.selectedDayIndex
-              : 0;
+          // Dispose verzögern, um Race Conditions zu vermeiden
+          Future.microtask(() {
+            try {
+              if (_tabController != null && !_tabController!.indexIsChanging) {
+                _tabController!.dispose();
+                _tabController = null;
+              }
+            } catch (e) {
+              print('Fehler beim Entsorgen des TabControllers: $e');
+            }
+          });
+        }
 
-      _tabController = TabController(
-        length: state.currentPlan!.trainingDays.length,
-        vsync: this,
-        initialIndex: initialIndex,
-      );
+        // Sicherstellen, dass der Index gültig ist
+        final initialIndex =
+            state.selectedDayIndex < state.currentPlan!.trainingDays.length
+                ? state.selectedDayIndex
+                : 0;
 
-      // Tab-Änderungen überwachen und den State aktualisieren
-      _tabController!.addListener(_handleTabSelection);
+        // Neuen TabController erstellen
+        _tabController = TabController(
+          length: state.currentPlan!.trainingDays.length,
+          vsync: this,
+          initialIndex: initialIndex,
+        );
+
+        // Tab-Änderungen überwachen und den State aktualisieren
+        _tabController!.addListener(_handleTabSelection);
+      }
+    } catch (e) {
+      print('Fehler in didChangeDependencies: $e');
     }
   }
 
   void _handleTabSelection() {
-    if (_tabController != null && !_tabController!.indexIsChanging) {
-      final state = Provider.of<WorkoutTrackerState>(context, listen: false);
-      if (state.selectedDayIndex != _tabController!.index) {
-        state.selectedDayIndex = _tabController!.index;
-        if (state.currentPlan != null &&
+    try {
+      if (_tabController != null && !_tabController!.indexIsChanging) {
+        final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+
+        // Überprüfen, ob der Index gültig ist
+        if (_tabController!.index >= 0 &&
+            state.currentPlan != null &&
             _tabController!.index < state.currentPlan!.trainingDays.length) {
-          state.setCurrentDay(
-              state.currentPlan!.trainingDays[_tabController!.index]);
+          // Verhindern von Endlosschleifen und unnötigen Updates
+          if (state.selectedDayIndex != _tabController!.index) {
+            // Updates verzögern und in einem sicheren Kontext ausführen
+            Future.microtask(() {
+              if (!mounted) return;
+
+              state.selectedDayIndex = _tabController!.index;
+              state.setCurrentDay(
+                  state.currentPlan!.trainingDays[_tabController!.index]);
+            });
+          }
         }
       }
+    } catch (e) {
+      print('Fehler beim Tab-Wechsel: $e');
     }
   }
 
@@ -113,16 +147,36 @@ class _EditPlanScreenState extends State<EditPlanScreen>
 
   @override
   void dispose() {
-    _fadeController.dispose();
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-
-    if (_tabController != null) {
-      _tabController!.removeListener(_handleTabSelection);
-      _tabController!.dispose();
+    // Sichere Disposal aller Controller und Listener
+    try {
+      _fadeController.dispose();
+    } catch (e) {
+      print('Fehler beim Entsorgen des _fadeController: $e');
     }
 
-    _focusNodes.forEach((_, node) => node.dispose());
+    try {
+      _scrollController.removeListener(_onScroll);
+      _scrollController.dispose();
+    } catch (e) {
+      print('Fehler beim Entsorgen des _scrollController: $e');
+    }
+
+    try {
+      if (_tabController != null) {
+        _tabController!.removeListener(_handleTabSelection);
+        _tabController!.dispose();
+        _tabController = null;
+      }
+    } catch (e) {
+      print('Fehler beim Entsorgen des _tabController: $e');
+    }
+
+    try {
+      _focusNodes.forEach((_, node) => node.dispose());
+    } catch (e) {
+      print('Fehler beim Entsorgen der FocusNodes: $e');
+    }
+
     super.dispose();
   }
 
@@ -229,6 +283,506 @@ class _EditPlanScreenState extends State<EditPlanScreen>
                       ),
                     ),
                     child: const Text('CONTINUE EDITING'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Neue Methode: Trainingstag hinzufügen
+  // Trainingstag hinzufügen - Optimierte Version
+  void _addTrainingDay() {
+    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+
+    if (state.currentPlan == null) return;
+
+    final TextEditingController nameController = TextEditingController(
+        text:
+            'Tag ${String.fromCharCode(65 + state.currentPlan!.trainingDays.length)}');
+    final FocusNode nameFocus = _getFocusNode('newDayName');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: const Color(0xFF1C2F49),
+        titlePadding: const EdgeInsets.all(24),
+        contentPadding: const EdgeInsets.all(24),
+        title: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF44CF74).withOpacity(0.2),
+              ),
+              child: const Icon(
+                Icons.add_circle_outline,
+                color: Color(0xFF44CF74),
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Neuen Trainingstag hinzufügen',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildStyledTextField(
+              label: 'Name des Trainingstags',
+              controller: nameController,
+              focusNode: nameFocus,
+              onChanged: (_) {},
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white.withOpacity(0.7),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                      ),
+                    ),
+                    child: const Text('ABBRECHEN'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      String dayName = nameController.text.trim();
+                      if (dayName.isEmpty) {
+                        dayName =
+                            'Tag ${String.fromCharCode(65 + state.currentPlan!.trainingDays.length)}';
+                      }
+
+                      // Neuen Trainingstag erstellen
+                      final newDay = TrainingDay(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: dayName,
+                        exercises: [],
+                      );
+
+                      // Dialog erst schließen, um UI-Freeze zu verhindern
+                      Navigator.of(context).pop();
+
+                      // Dann in separatem Microtask das Update durchführen
+                      Future.microtask(() {
+                        try {
+                          // Zum Plan hinzufügen
+                          state.currentPlan!.trainingDays.add(newDay);
+
+                          // Verzögert UI aktualisieren, um sicherzustellen, dass der aktuelle Frame fertig ist
+                          Future.delayed(const Duration(milliseconds: 50), () {
+                            if (!mounted) return;
+
+                            // Neuen Index bestimmen
+                            int newIndex =
+                                state.currentPlan!.trainingDays.length - 1;
+
+                            // State ändern und UI aktualisieren
+                            setState(() {
+                              if (_tabController != null) {
+                                _tabController!
+                                    .removeListener(_handleTabSelection);
+                                _tabController!.dispose();
+                              }
+
+                              _tabController = TabController(
+                                length: state.currentPlan!.trainingDays.length,
+                                vsync: this,
+                                initialIndex: newIndex,
+                              );
+
+                              _tabController!.addListener(_handleTabSelection);
+                            });
+
+                            // Provider updaten
+                            state.selectedDayIndex = newIndex;
+                            state.setCurrentDay(newDay);
+                            state.notifyListeners();
+                          });
+                        } catch (e) {
+                          print('Fehler beim Hinzufügen des Trainingstags: $e');
+                        }
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF44CF74),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('HINZUFÜGEN'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Trainingstag entfernen - Optimierte Version
+  void _removeCurrentTrainingDay() {
+    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+
+    if (state.currentPlan == null || state.currentDay == null) return;
+
+    // Wenn es nur einen Tag gibt, verhindern wir das Löschen
+    if (state.currentPlan!.trainingDays.length <= 1) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: const Color(0xFF1C2F49),
+          titlePadding: const EdgeInsets.all(24),
+          contentPadding: const EdgeInsets.all(24),
+          title: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFF95738).withOpacity(0.2),
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Color(0xFFF95738),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Aktion nicht möglich',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Ein Trainingsplan muss mindestens einen Tag enthalten.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3D85C6),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  minimumSize: const Size(double.infinity, 0),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Bestätigungsdialog zeigen
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: const Color(0xFF1C2F49),
+        titlePadding: const EdgeInsets.all(24),
+        contentPadding: const EdgeInsets.all(24),
+        title: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFF95738).withOpacity(0.2),
+              ),
+              child: const Icon(
+                Icons.delete_outline,
+                color: Color(0xFFF95738),
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Trainingstag entfernen',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Möchtest du "${state.currentDay!.name}" wirklich entfernen? Alle Übungen dieses Tages gehen verloren.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white.withOpacity(0.7),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                      ),
+                    ),
+                    child: const Text('ABBRECHEN'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      // Aktuellen Index und Tag-ID sichern
+                      final int currentIndex = state.selectedDayIndex;
+                      final String dayId = state.currentDay!.id;
+
+                      // Dialog erst schließen
+                      Navigator.of(context).pop();
+
+                      // In separatem Microtask das Update durchführen
+                      Future.microtask(() {
+                        try {
+                          // Neuen Index bestimmen (zum vorherigen Tag gehen, wenn möglich)
+                          final int newIndex =
+                              currentIndex > 0 ? currentIndex - 1 : 0;
+
+                          // Kopie der Trainingstage erstellen, um Race Conditions zu vermeiden
+                          final days = List<TrainingDay>.from(
+                              state.currentPlan!.trainingDays);
+
+                          // Tag entfernen
+                          days.removeWhere((day) => day.id == dayId);
+
+                          // Aktualisierte Liste in den Plan einfügen
+                          state.currentPlan!.trainingDays = days;
+
+                          // UI verzögert aktualisieren
+                          Future.delayed(const Duration(milliseconds: 50), () {
+                            if (!mounted) return;
+
+                            // State ändern und UI aktualisieren
+                            setState(() {
+                              if (_tabController != null) {
+                                _tabController!
+                                    .removeListener(_handleTabSelection);
+                                _tabController!.dispose();
+                              }
+
+                              _tabController = TabController(
+                                length: state.currentPlan!.trainingDays.length,
+                                vsync: this,
+                                initialIndex: newIndex <
+                                        state.currentPlan!.trainingDays.length
+                                    ? newIndex
+                                    : 0,
+                              );
+
+                              _tabController!.addListener(_handleTabSelection);
+                            });
+
+                            // Provider updaten
+                            if (state.currentPlan!.trainingDays.isNotEmpty) {
+                              state.selectedDayIndex = newIndex <
+                                      state.currentPlan!.trainingDays.length
+                                  ? newIndex
+                                  : 0;
+                              state.setCurrentDay(state.currentPlan!
+                                  .trainingDays[state.selectedDayIndex]);
+                            }
+                            state.notifyListeners();
+                          });
+                        } catch (e) {
+                          print('Fehler beim Entfernen des Trainingstags: $e');
+                        }
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFF95738),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('ENTFERNEN'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Methode: Dialog zum Umbenennen eines Trainingstags - Optimierte Version
+  void _renameTrainingDay() {
+    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+
+    if (state.currentPlan == null || state.currentDay == null) return;
+
+    final TextEditingController nameController =
+        TextEditingController(text: state.currentDay!.name);
+    final FocusNode nameFocus = _getFocusNode('renameDayName');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: const Color(0xFF1C2F49),
+        titlePadding: const EdgeInsets.all(24),
+        contentPadding: const EdgeInsets.all(24),
+        title: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF3D85C6).withOpacity(0.2),
+              ),
+              child: const Icon(
+                Icons.edit,
+                color: Color(0xFF3D85C6),
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Trainingstag umbenennen',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildStyledTextField(
+              label: 'Name des Trainingstags',
+              controller: nameController,
+              focusNode: nameFocus,
+              onChanged: (_) {},
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white.withOpacity(0.7),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                      ),
+                    ),
+                    child: const Text('ABBRECHEN'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      String dayName = nameController.text.trim();
+                      if (dayName.isEmpty) {
+                        dayName = state.currentDay!.name;
+                      }
+
+                      // Referenz auf den aktuellen Tag und Index sichern
+                      final currentDay = state.currentDay!;
+                      final int currentIndex = state.selectedDayIndex;
+
+                      // Dialog erst schließen
+                      Navigator.of(context).pop();
+
+                      // In separatem Microtask das Update durchführen
+                      Future.microtask(() {
+                        try {
+                          // Trainingstag umbenennen
+                          currentDay.name = dayName;
+
+                          // UI verzögert aktualisieren, um Race Conditions zu vermeiden
+                          Future.delayed(const Duration(milliseconds: 50), () {
+                            if (!mounted) return;
+
+                            // TabController aktualisieren, um den neuen Namen zu übernehmen
+                            setState(() {
+                              // TabController nicht neu erstellen, nur das Widget neu bauen
+                              // damit der neue Name angezeigt wird
+                            });
+
+                            // Provider benachrichtigen
+                            state.notifyListeners();
+                          });
+                        } catch (e) {
+                          print('Fehler beim Umbenennen des Trainingstags: $e');
+                        }
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF3D85C6),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('UMBENENNEN'),
                   ),
                 ),
               ],
@@ -421,10 +975,30 @@ class _EditPlanScreenState extends State<EditPlanScreen>
 
   Widget _buildPlanContent(BuildContext context, WorkoutTrackerState state) {
     if (state.currentPlan!.trainingDays.isEmpty) {
-      return const Center(
-        child: Text(
-          'This plan has no training days.',
-          style: TextStyle(color: Colors.white),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Keine Trainingstage vorhanden.',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _addTrainingDay,
+              icon: const Icon(Icons.add),
+              label: const Text('TRAININGSTAG HINZUFÜGEN'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF44CF74),
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -432,26 +1006,126 @@ class _EditPlanScreenState extends State<EditPlanScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Tab bar with days
+        // Tab bar management container
         Container(
           margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1C2F49),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.1),
-              width: 1,
-            ),
-          ),
-          child: TabBar(
-            controller: _tabController,
-            tabs: state.currentPlan!.trainingDays
-                .map((day) => Tab(text: day.name))
-                .toList(),
-            labelColor: const Color(0xFF3D85C6),
-            unselectedLabelColor: Colors.white.withOpacity(0.7),
-            indicatorColor: const Color(0xFF3D85C6),
-            indicatorSize: TabBarIndicatorSize.tab,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Tab management row
+              Row(
+                children: [
+                  // Rename current day button
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _renameTrainingDay,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1C2F49),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.edit_outlined,
+                          color: Color(0xFF3D85C6),
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Delete current day button
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _removeCurrentTrainingDay,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1C2F49),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline,
+                          color: Color(0xFFF95738),
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const Spacer(),
+
+                  // Add new day button
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _addTrainingDay,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF44CF74).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFF44CF74).withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(
+                              Icons.add,
+                              color: Color(0xFF44CF74),
+                              size: 16,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'TAG',
+                              style: TextStyle(
+                                color: Color(0xFF44CF74),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Tab bar with days
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1C2F49),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.1),
+                    width: 1,
+                  ),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  isScrollable: true,
+                  tabs: state.currentPlan!.trainingDays
+                      .map((day) => Tab(text: day.name))
+                      .toList(),
+                  labelColor: const Color(0xFF3D85C6),
+                  unselectedLabelColor: Colors.white.withOpacity(0.7),
+                  indicatorColor: const Color(0xFF3D85C6),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -919,9 +1593,7 @@ class _EditPlanScreenState extends State<EditPlanScreen>
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                             side: BorderSide(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
-                            ),
+                                color: Colors.white.withOpacity(0.2)),
                           ),
                         ),
                         child: Text(

@@ -106,11 +106,143 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return -centerDistance / screenHeight * 20;
   }
 
+  // Hilfsfunktion für die Gesamtzahl der Übungen eines Plans
+  int _getTotalExercises(TrainingPlan plan) {
+    int total = 0;
+    for (var day in plan.trainingDays) {
+      total += day.exercises.length;
+    }
+    return total;
+  }
+
+  // Plan-Auswahldialog anzeigen
+  void _showPlanSelectionDialog(
+      BuildContext context, WorkoutTrackerState state) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Color(0xFF1C2F49),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Meine Trainingspläne',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(height: 20),
+              Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: state.plans.map((plan) {
+                      bool isActive = plan.id == state.activePlan?.id;
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color:
+                              isActive ? Color(0xFF253B59) : Color(0xFF14253D),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          title: Text(
+                            plan.name,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: isActive
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${plan.trainingDays.length} Tage · ${_getTotalExercises(plan)} Übungen',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: isActive
+                              ? Container(
+                                  padding: EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFF44CF74).withOpacity(0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.check,
+                                    color: Color(0xFF44CF74),
+                                    size: 16,
+                                  ),
+                                )
+                              : ElevatedButton(
+                                  onPressed: () {
+                                    state.setActivePlan(plan.id);
+                                    Navigator.of(context).pop();
+                                  },
+                                  child: Text('Aktivieren'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Color(0xFF3D85C6),
+                                    foregroundColor: Colors.white,
+                                    textStyle: TextStyle(fontSize: 12),
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 8),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              SizedBox(height: 20),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'SCHLIESSEN',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  minimumSize: Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<WorkoutTrackerState>(
       builder: (context, state, child) {
-        // Zeige Ladebildschirm während Daten geladen werden
+        // Zeige Ladebildschirm wÃ¤hrend Daten geladen werden
         if (state.isLoading) {
           return _buildLoadingScreen();
         }
@@ -260,25 +392,67 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildPlansContent(BuildContext context, WorkoutTrackerState state) {
     return AnimatedSwitcher(
       duration: Duration(milliseconds: 300),
-      child: state.plans.isEmpty
+      child: state.activePlan == null
           ? EmptyPlansView(onCreatePressed: widget.onCreatePressed)
           : Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: EdgeInsets.only(top: 20, bottom: 100),
-                physics: BouncingScrollPhysics(),
-                itemCount: state.plans.length,
-                itemBuilder: (context, index) => Hero(
-                  tag: 'plan_${state.plans[index].id}',
-                  child: PlanCard(
-                    key: _planCardKeys[index],
-                    plan: state.plans[index],
-                    parallaxOffset: _getParallaxOffset(_planCardKeys[index]),
-                    onEditPressed: widget.onEditPressed,
-                    onWorkoutPressed: widget.onWorkoutPressed,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Aktiver Plan
+                  Hero(
+                    tag: 'plan_${state.activePlan!.id}',
+                    child: PlanCard(
+                      key: GlobalKey(),
+                      plan: state.activePlan!,
+                      parallaxOffset: 0.0,
+                      onEditPressed: widget.onEditPressed,
+                      onWorkoutPressed: widget.onWorkoutPressed,
+                    ),
                   ),
-                ),
+
+                  // Button zum Zugriff auf die Plan-Bibliothek
+                  if (state.plans.length > 1)
+                    Padding(
+                      padding: EdgeInsets.only(top: 16),
+                      child: GestureDetector(
+                        onTap: () {
+                          _showPlanSelectionDialog(context, state);
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Color(0xFF1C2F49),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.1),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.folder_outlined,
+                                color: Color(0xFF3D85C6),
+                                size: 20,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'MEINE PLÄNE (${state.plans.length})',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
     );

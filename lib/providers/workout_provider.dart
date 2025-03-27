@@ -12,6 +12,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   TrainingDay? _currentDay;
   Exercise? _currentExercise;
   List<SetLog> _workoutLog = [];
+  String? _activePlanId; // ID des aktuell aktiven Plans
 
   // Flag to track if current plan is saved to database
   bool _isPlanSaved = true;
@@ -67,18 +68,18 @@ class WorkoutTrackerState extends ChangeNotifier {
   // Exercise selection mode flag
   bool _isSelectingFromDatabase = false;
 
-  // Flag für initialen Ladevorgang
+  // Flag fÃƒÂ¼r initialen Ladevorgang
   bool _isLoading = true;
 
-  // Getter für Ladevorgang
+  // Getter fÃƒÂ¼r Ladevorgang
   bool get isLoading => _isLoading;
 
   // Getter for plan saved status
   bool get isPlanSaved => _isPlanSaved;
 
-  // Eine Methode, die State-Änderungen sicher ausführt
+  // Eine Methode, die State-Ãƒâ€žnderungen sicher ausfÃƒÂ¼hrt
   void safeUpdate(Function updateFunction) {
-    // Verzögere State-Änderung auf die nächste Frame-Verarbeitung
+    // VerzÃƒÂ¶gere State-Ãƒâ€žnderung auf die nÃƒÂ¤chste Frame-Verarbeitung
     Future.microtask(() {
       try {
         updateFunction();
@@ -89,7 +90,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   }
 
   WorkoutTrackerState() {
-    // Initialisiere Controller für Rechner
+    // Initialisiere Controller fÃƒÂ¼r Rechner
     testWeightController = TextEditingController(text: _testWeight);
     testRepsController = TextEditingController(text: _testReps);
     targetRepsController = TextEditingController(text: _targetReps);
@@ -101,7 +102,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     // Daten aus der Datenbank laden
     _loadData();
 
-    // Übungsdatenbank laden
+    // ÃƒÅ"bungsdatenbank laden
     _loadExerciseDatabase();
   }
 
@@ -111,11 +112,20 @@ class WorkoutTrackerState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Trainingspläne laden
+      // TrainingsplÃƒÂ¤ne laden
       _plans = await _databaseService.getTrainingPlans();
 
       // Workout-Logs laden
       _savedWorkouts = await _databaseService.getWorkoutLogs();
+
+      // Aktiven Plan laden
+      _activePlanId = await _databaseService.getActivePlanId();
+
+      // Wenn kein aktiver Plan gesetzt ist und es Pläne gibt, den ersten als aktiv setzen
+      if (_activePlanId == null && _plans.isNotEmpty) {
+        _activePlanId = _plans.first.id;
+        _savePlanActivationState();
+      }
 
       _isLoading = false;
       notifyListeners();
@@ -126,7 +136,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     }
   }
 
-  // Lade die Übungsdatenbank
+  // Lade die ÃƒÅ"bungsdatenbank
   Future<void> _loadExerciseDatabase() async {
     if (!_isExerciseDbLoaded) {
       await _exerciseDb.loadDatabase();
@@ -192,6 +202,16 @@ class WorkoutTrackerState extends ChangeNotifier {
   int get newExerciseMaxReps => _newExerciseMaxReps;
   int get newExerciseRIR => _newExerciseRIR;
   String get newExerciseDescription => _newExerciseDescription;
+
+  // Getter für den aktiven Plan
+  TrainingPlan? get activePlan {
+    if (_activePlanId == null) return null;
+    try {
+      return _plans.firstWhere((plan) => plan.id == _activePlanId);
+    } catch (e) {
+      return null;
+    }
+  }
 
   // Exercise database getters
   bool get isExerciseDbLoaded => _isExerciseDbLoaded;
@@ -285,6 +305,26 @@ class WorkoutTrackerState extends ChangeNotifier {
         await _databaseService.updateTrainingPlan(_currentPlan!);
       } catch (e) {
         print('Fehler beim Aktualisieren des Plans: $e');
+      }
+    }
+  }
+
+  // Setter für aktiven Plan
+  void setActivePlan(String planId) {
+    if (_plans.any((plan) => plan.id == planId)) {
+      _activePlanId = planId;
+      _savePlanActivationState();
+      notifyListeners();
+    }
+  }
+
+  // Methode zum Speichern des aktiven Plan-Status
+  Future<void> _savePlanActivationState() async {
+    if (_activePlanId != null) {
+      try {
+        await _databaseService.saveActivePlanId(_activePlanId!);
+      } catch (e) {
+        print('Fehler beim Speichern des aktiven Plan-Status: $e');
       }
     }
   }
@@ -427,7 +467,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Setze die aktuelle Übung basierend auf einem Index im Trainingstag
+  // Setze die aktuelle ÃƒÅ"bung basierend auf einem Index im Trainingstag
   void setCurrentExerciseByIndex(int index) {
     if (_currentDay == null ||
         index < 0 ||
@@ -435,18 +475,18 @@ class WorkoutTrackerState extends ChangeNotifier {
 
     Exercise selectedExercise = _currentDay!.exercises[index];
 
-    // Wenn die aktuelle Übung bereits die ausgewählte ist, nichts tun
+    // Wenn die aktuelle ÃƒÅ"bung bereits die ausgewÃƒÂ¤hlte ist, nichts tun
     if (_currentExercise?.id == selectedExercise.id) return;
 
-    // Speichere Daten der aktuellen Übung, falls vorhanden
+    // Speichere Daten der aktuellen ÃƒÅ"bung, falls vorhanden
     if (_currentExercise != null) {
-      // Optional: Hier könnten wir unvollständige Sets speichern, bevor wir die Übung wechseln
+      // Optional: Hier kÃƒÂ¶nnten wir unvollstÃƒÂ¤ndige Sets speichern, bevor wir die ÃƒÅ"bung wechseln
     }
 
     _currentExercise = selectedExercise;
-    _currentSetIndex = 0; // Setze Fokus auf das erste Set der neuen Übung
+    _currentSetIndex = 0; // Setze Fokus auf das erste Set der neuen ÃƒÅ"bung
 
-    // Initialisiere die Sets für die neue Übung
+    // Initialisiere die Sets fÃƒÂ¼r die neue ÃƒÅ"bung
     _initializeExerciseSets(selectedExercise);
 
     notifyListeners();
@@ -505,7 +545,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     // Actual max reps = Performed reps + RIR
     int totalReps = reps + rir;
 
-    // Brzycki formula: 1RM = Weight × (36 / (37 - Reps))
+    // Brzycki formula: 1RM = Weight Ãƒâ€" (36 / (37 - Reps))
     if (totalReps >= 36)
       return weight * 1.0; // For very high rep counts, formula is not accurate
 
@@ -526,7 +566,7 @@ class WorkoutTrackerState extends ChangeNotifier {
 
     int effectiveReps = targetReps + targetRIR;
 
-    // Reverse Brzycki formula: Weight = 1RM × ((37 - effective reps) / 36)
+    // Reverse Brzycki formula: Weight = 1RM Ãƒâ€" ((37 - effective reps) / 36)
     double weight = oneRM * ((37 - effectiveReps) / 36);
 
     // Round to nearest 0.5 kg
@@ -558,7 +598,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     int userTargetRIR = int.tryParse(_targetRIR) ?? _currentExercise!.targetRIR;
     int effectiveReps = userTargetReps + userTargetRIR; // Consider RIR
 
-    // Reverse formula: Weight = 1RM × ((37 - effective reps) / 36)
+    // Reverse formula: Weight = 1RM Ãƒâ€" ((37 - effective reps) / 36)
     double idealWeight = oneRM * ((37 - effectiveReps) / 36);
 
     // Round to nearest 0.5 kg
@@ -644,14 +684,8 @@ class WorkoutTrackerState extends ChangeNotifier {
 
     // Check for missing data
     if (lastSetData == null) {
-      // If we have at least the current exercise, show default target values
-      _progressionSuggestion = ProgressionSuggestion(
-        weight: '',
-        reps: _currentExercise!.minReps.toString(),
-        rir: _currentExercise!.targetRIR.toString(),
-        reason:
-            'No complete training data available. Start with your target values.',
-      );
+      // Set progression suggestion to null when there's no data
+      _progressionSuggestion = null;
       notifyListeners();
       return;
     }
@@ -1087,6 +1121,10 @@ class WorkoutTrackerState extends ChangeNotifier {
 
     _plans.add(newPlan);
     _currentPlan = newPlan;
+
+    // Neu erstellten Plan direkt als aktiv setzen
+    _activePlanId = newPlan.id;
+
     if (trainingDays.isNotEmpty) {
       _currentDay = trainingDays[0];
     }
@@ -1094,6 +1132,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     // In der Datenbank speichern
     try {
       await _databaseService.saveTrainingPlan(newPlan);
+      await _savePlanActivationState(); // Aktiven Plan-Status speichern
     } catch (e) {
       print('Fehler beim Speichern des neuen Plans: $e');
     }
@@ -1177,9 +1216,13 @@ class WorkoutTrackerState extends ChangeNotifier {
         _plans.add(_currentPlan!);
       }
 
+      // Den neuen Plan als aktiven Plan setzen
+      _activePlanId = _currentPlan!.id;
+
       // Save to database
       try {
         await _databaseService.saveTrainingPlan(_currentPlan!);
+        await _savePlanActivationState(); // Aktiven Plan-Status speichern
         _isPlanSaved = true;
         notifyListeners();
         return true; // Plan saved successfully
@@ -1254,11 +1297,19 @@ class WorkoutTrackerState extends ChangeNotifier {
       _currentDay = null;
     }
 
-    // Aus der Datenbank löschen
+    // If the active plan was deleted, set a new active plan if available
+    if (_activePlanId == planId && _plans.isNotEmpty) {
+      _activePlanId = _plans.first.id;
+      _savePlanActivationState();
+    } else if (_plans.isEmpty) {
+      _activePlanId = null;
+    }
+
+    // Aus der Datenbank lÃƒÂ¶schen
     try {
       await _databaseService.deleteTrainingPlan(planId);
     } catch (e) {
-      print('Fehler beim Löschen des Plans: $e');
+      print('Fehler beim LÃƒÂ¶schen des Plans: $e');
     }
 
     notifyListeners();
