@@ -1,7 +1,9 @@
 // lib/screens/workout/workout_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/workout_provider.dart';
+import '../../widgets/rest_timer.dart';
 
 // Component imports
 import 'components/workout_header.dart';
@@ -30,10 +32,21 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   bool _showElevation = false;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  bool _isTabChangeFromState =
+      false; // Flag to track tab changes initiated by state
+  String?
+      _lastExerciseId; // Track last selected exercise ID for tab synchronization
+
+  // Store a reference to the state to avoid Provider.of in dispose
+  late WorkoutTrackerState _workoutState;
+  bool _stateListenerAdded = false;
 
   @override
   void initState() {
     super.initState();
+
+    // Store reference to state early in lifecycle
+    _workoutState = Provider.of<WorkoutTrackerState>(context, listen: false);
 
     // Fade-in animation
     _fadeController = AnimationController(
@@ -51,49 +64,102 @@ class _WorkoutScreenState extends State<WorkoutScreen>
     // Scroll listener for elevation
     _scrollController.addListener(_onScroll);
 
-    // Verzögerte Initialisierung des TabControllers
+    // Delayed initialization of TabController
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initExerciseTabController();
+      if (mounted) {
+        _initExerciseTabController();
+      }
     });
   }
 
   void _initExerciseTabController() {
-    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
-    if (state.currentDay != null && state.currentDay!.exercises.isNotEmpty) {
-      // Initialisiere den TabController mit der Anzahl der Übungen
-      _exerciseTabController = TabController(
-        length: state.currentDay!.exercises.length,
-        vsync: this,
-      );
+    if (!mounted) return;
 
-      // Setze den TabController auf den Index der aktuellen Übung, falls vorhanden
-      if (state.currentExercise != null) {
-        int exerciseIndex = state.currentDay!.exercises
-            .indexWhere((ex) => ex.id == state.currentExercise!.id);
-        if (exerciseIndex >= 0) {
-          _exerciseTabController!.index = exerciseIndex;
+    // Use stored reference instead of Provider.of
+    if (_workoutState.currentDay == null ||
+        _workoutState.currentDay!.exercises.isEmpty) return;
+
+    // Initialize TabController with the number of exercises
+    _exerciseTabController = TabController(
+      length: _workoutState.currentDay!.exercises.length,
+      vsync: this,
+    );
+
+    // Set TabController to the index of the current exercise, if available
+    if (_workoutState.currentExercise != null) {
+      int exerciseIndex = _workoutState.currentDay!.exercises
+          .indexWhere((ex) => ex.id == _workoutState.currentExercise!.id);
+      if (exerciseIndex >= 0) {
+        _exerciseTabController!.index = exerciseIndex;
+        // Store the current exercise ID for change detection
+        _lastExerciseId = _workoutState.currentExercise!.id;
+      }
+    }
+
+    // Listen to tab changes and update current exercise accordingly
+    _exerciseTabController!.addListener(_handleTabControllerChange);
+
+    // Add a listener to handle state changes
+    _workoutState.addListener(_handleStateChange);
+    _stateListenerAdded = true;
+  }
+
+  // Handle changes from tab controller
+  void _handleTabControllerChange() {
+    if (!mounted || _exerciseTabController == null) return;
+
+    if (!_exerciseTabController!.indexIsChanging && !_isTabChangeFromState) {
+      final int tabIndex = _exerciseTabController!.index;
+      if (tabIndex >= 0 &&
+          tabIndex < _workoutState.currentDay!.exercises.length) {
+        final selectedExercise = _workoutState.currentDay!.exercises[tabIndex];
+        if (_workoutState.currentExercise?.id != selectedExercise.id) {
+          _workoutState.setCurrentExerciseByIndex(tabIndex);
+          // Update last exercise ID
+          _lastExerciseId = selectedExercise.id;
         }
       }
+    }
+    _isTabChangeFromState = false; // Reset flag after handling
+  }
 
-      // Höre auf Tab-Änderungen und aktualisiere die aktuelle Übung entsprechend
-      _exerciseTabController!.addListener(() {
-        if (!_exerciseTabController!.indexIsChanging && mounted) {
-          final int tabIndex = _exerciseTabController!.index;
-          if (tabIndex >= 0 && tabIndex < state.currentDay!.exercises.length) {
-            final selectedExercise = state.currentDay!.exercises[tabIndex];
-            if (state.currentExercise?.id != selectedExercise.id) {
-              state.setCurrentExerciseByIndex(tabIndex);
-            }
-          }
-        }
-      });
+  // Method to handle changes in the WorkoutTrackerState
+  void _handleStateChange() {
+    if (!mounted ||
+        _exerciseTabController == null ||
+        _workoutState.currentDay == null) return;
 
-      // Kein setState hier mehr aufrufen - wir nutzen stattdessen addPostFrameCallback,
-      // wenn wir einen Rebuild triggern müssen
+    // Check if current exercise has changed
+    if (_workoutState.currentExercise != null &&
+        _lastExerciseId != _workoutState.currentExercise!.id) {
+      _lastExerciseId = _workoutState.currentExercise!.id;
+
+      // Find the index of the new current exercise
+      int exerciseIndex = _workoutState.currentDay!.exercises
+          .indexWhere((ex) => ex.id == _workoutState.currentExercise!.id);
+
+      if (exerciseIndex >= 0 &&
+          exerciseIndex != _exerciseTabController!.index) {
+        // Set flag to indicate this tab change is from state update
+        _isTabChangeFromState = true;
+
+        // Animate to the new tab with proper duration
+        _exerciseTabController!.animateTo(
+          exerciseIndex,
+          duration: Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+
+        // Log for debugging
+        print(
+            'Tab switched to exercise at index $exerciseIndex: ${_workoutState.currentExercise!.name}');
+      }
     }
   }
 
   void _onScroll() {
+    if (!mounted) return;
+
     if (_scrollController.offset > 0 && !_showElevation) {
       setState(() {
         _showElevation = true;
@@ -109,27 +175,20 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   void didUpdateWidget(WorkoutScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Bei Änderungen an der Übung oder dem Tag, TabController aktualisieren
-    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
-    if (state.currentDay != null && state.currentExercise != null) {
-      // Überprüfe, ob der TabController noch gültig ist
-      if (!_exerciseTabControllerIsValid(state)) {
-        // Verzögere die Initialisierung um setState-Aufrufe während des Builds zu vermeiden
+    if (!mounted) return;
+
+    // When exercise or day changes, update TabController if needed
+    if (_workoutState.currentDay != null &&
+        _workoutState.currentExercise != null) {
+      // Check if TabController is still valid
+      if (!_exerciseTabControllerIsValid(_workoutState)) {
+        // Delay initialization to avoid setState calls during build
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _initExerciseTabController();
-            setState(() {}); // UI aktualisieren nach der Initialisierung
+            setState(() {}); // Update UI after initialization
           }
         });
-      } else {
-        // Aktualisiere nur den Tab-Index, falls er sich geändert hat
-        int exerciseIndex = state.currentDay!.exercises
-            .indexWhere((ex) => ex.id == state.currentExercise!.id);
-        if (exerciseIndex >= 0 &&
-            _exerciseTabController!.index != exerciseIndex &&
-            !_exerciseTabController!.indexIsChanging) {
-          _exerciseTabController!.animateTo(exerciseIndex);
-        }
       }
     }
   }
@@ -140,14 +199,37 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         _exerciseTabController!.length == state.currentDay!.exercises.length;
   }
 
+  // Safe handler for workout finish
+  void _handleFinishWorkout() {
+    if (!mounted) return;
+
+    HapticFeedback.heavyImpact();
+
+    // Use local reference instead of Provider.of
+    _workoutState.finishWorkout().then((_) {
+      // Only call callback if still mounted
+      if (mounted) {
+        widget.onFinished();
+      }
+    });
+  }
+
   @override
   void dispose() {
+    // Important: Remove listeners safely
+    if (_stateListenerAdded) {
+      _workoutState.removeListener(_handleStateChange);
+    }
+
     _fadeController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+
     if (_exerciseTabController != null) {
+      _exerciseTabController!.removeListener(_handleTabControllerChange);
       _exerciseTabController!.dispose();
     }
+
     super.dispose();
   }
 
@@ -155,8 +237,8 @@ class _WorkoutScreenState extends State<WorkoutScreen>
   Widget build(BuildContext context) {
     return Consumer<WorkoutTrackerState>(
       builder: (context, state, child) {
-        // Überprüfen, ob alle Sets der letzten Übung protokolliert sind
-        bool allSetsOfAllExercisesLogged = _areAllExercisesComplete(state);
+        // Update local reference
+        _workoutState = state;
 
         return Scaffold(
           extendBodyBehindAppBar: true,
@@ -180,15 +262,20 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                     // Header
                     WorkoutHeader(
                       showElevation: _showElevation,
-                      onBackPressed: widget.onBackPressed,
+                      onBackPressed: () {
+                        // Safe back navigation
+                        if (mounted) {
+                          widget.onBackPressed();
+                        }
+                      },
                       currentPlan: state.currentPlan,
                       currentDay: state.currentDay,
                     ),
 
-                    // Nur anzeigen, wenn Training aktiv und Übungen vorhanden sind
+                    // Only show tabs if workout is active and not all exercises are completed
                     if (state.currentDay != null &&
                         state.currentDay!.exercises.isNotEmpty &&
-                        !allSetsOfAllExercisesLogged)
+                        !state.isAllExercisesCompleted)
                       _buildExerciseTabs(state),
 
                     // Content
@@ -200,25 +287,39 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                           physics: BouncingScrollPhysics(),
                           padding: EdgeInsets.only(bottom: 100),
                           children: [
-                            // Übungskarte anzeigen, wenn Training aktiv und nicht alle Sets protokolliert
+                            // Zeige den Rest Timer, wenn aktiviert
+                            if (state.showRestTimer)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                    top: 16.0, bottom: 16.0),
+                                child: RestTimer(
+                                  initialDuration: state.currentRestTime,
+                                  onTimerComplete: () {
+                                    state.endRestTimer();
+                                  },
+                                  onSkip: () {
+                                    state.endRestTimer();
+                                  },
+                                ),
+                              ),
+
+                            // Exercise card - show only if workout is active and not all exercises are completed
                             if (state.currentDay != null &&
                                 state.currentDay!.exercises.isNotEmpty &&
-                                !allSetsOfAllExercisesLogged)
+                                !state.isAllExercisesCompleted &&
+                                state.currentExercise != null)
                               _buildTabView(state),
 
-                            // Workout-Log-Karte, falls Sets protokolliert sind
+                            // Workout log card - if any sets are logged
                             if (state.workoutLog.isNotEmpty)
                               WorkoutLogCard(
                                 workoutLog: state.workoutLog,
                               ),
 
-                            // Erfolgskarte anzeigen, wenn alle Sets protokolliert sind
-                            if (allSetsOfAllExercisesLogged)
+                            // Show completion card when all exercises are completed
+                            if (state.isAllExercisesCompleted)
                               WorkoutCompletedCard(
-                                onFinishWorkout: () {
-                                  state.finishWorkout();
-                                  widget.onFinished();
-                                },
+                                onFinishWorkout: _handleFinishWorkout,
                               ),
                           ],
                         ),
@@ -239,31 +340,31 @@ class _WorkoutScreenState extends State<WorkoutScreen>
       return SizedBox.shrink();
     }
 
-    // Prüfen, ob TabController bereits initialisiert ist
+    // Check if TabController is already initialized
     if (!_exerciseTabControllerIsValid(state)) {
-      // Verzögere die Initialisierung auf die nächste Frame
+      // Delay initialization to the next frame
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _initExerciseTabController();
-          setState(() {}); // Trigger UI update nach der Initialisierung
+          setState(() {}); // Trigger UI update after initialization
         }
       });
-      return SizedBox.shrink(); // Zeige nichts während der Initialisierung
+      return SizedBox.shrink(); // Show nothing during initialization
     }
 
     return Container(
-      height: 48, // Feste Höhe für die Tabs
+      height: 48, // Fixed height for tabs
       margin: EdgeInsets.symmetric(vertical: 8),
       child: TabBar(
         controller: _exerciseTabController!,
-        isScrollable: true, // Scrollbar machen, falls viele Übungen
+        isScrollable: true, // Make scrollable for many exercises
         indicatorColor: Color(0xFF3D85C6),
         labelColor: Color(0xFF3D85C6),
         unselectedLabelColor: Colors.white.withOpacity(0.7),
         indicatorSize: TabBarIndicatorSize.tab,
         tabs: state.currentDay!.exercises.map((exercise) {
-          // Prüfen, ob alle Sets dieser Übung abgeschlossen sind
-          final allSetsCompleted =
+          // Check if all sets of this exercise are completed
+          final bool isCompleted =
               _areAllSetsOfExerciseCompleted(state, exercise.id);
 
           return Tab(
@@ -271,7 +372,7 @@ class _WorkoutScreenState extends State<WorkoutScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(exercise.name),
-                if (allSetsCompleted) ...[
+                if (isCompleted) ...[
                   SizedBox(width: 6),
                   Icon(Icons.check_circle, size: 16, color: Color(0xFF44CF74))
                 ]
@@ -296,32 +397,18 @@ class _WorkoutScreenState extends State<WorkoutScreen>
 
   bool _areAllSetsOfExerciseCompleted(
       WorkoutTrackerState state, String exerciseId) {
-    // Finde die Übung in den Logs
+    // Find the exercise in the logs
     final exerciseSets =
         state.workoutLog.where((log) => log.exerciseId == exerciseId).toList();
 
-    // Finde die Übung im aktuellen Tag
+    // Find the exercise in the current day
     final exercises =
         state.currentDay!.exercises.where((ex) => ex.id == exerciseId).toList();
 
-    // Wenn die Übung nicht gefunden wurde oder keine Sets hat, return false
+    // If the exercise was not found or has no sets, return false
     if (exercises.isEmpty) return false;
 
-    // Prüfe, ob die Anzahl der protokollierten Sets der Anzahl der erwarteten Sets entspricht
+    // Check if the number of logged sets matches the number of expected sets
     return exerciseSets.length == exercises.first.sets;
-  }
-
-  bool _areAllExercisesComplete(WorkoutTrackerState state) {
-    if (state.currentDay == null) return false;
-
-    // Prüfe für jede Übung im aktuellen Tag
-    for (var exercise in state.currentDay!.exercises) {
-      if (!_areAllSetsOfExerciseCompleted(state, exercise.id)) {
-        return false; // Mindestens eine Übung ist nicht vollständig
-      }
-    }
-
-    // Wenn alle Übungen vollständig sind
-    return state.currentDay!.exercises.isNotEmpty;
   }
 }

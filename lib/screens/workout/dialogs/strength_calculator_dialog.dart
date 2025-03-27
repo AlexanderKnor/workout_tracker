@@ -1,5 +1,6 @@
 // lib/screens/workout/dialogs/strength_calculator_dialog.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/workout_provider.dart';
 
@@ -16,11 +17,11 @@ class _StrengthCalculatorDialogState extends State<StrengthCalculatorDialog> {
   void initState() {
     super.initState();
 
-    // Verwende einen Post-Frame Callback, um den State sicher zu aktualisieren
+    // Use a post-frame callback to safely update state
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = Provider.of<WorkoutTrackerState>(context, listen: false);
 
-      // Setze Standardwerte für den Rechner
+      // Set default values for the calculator
       state.testWeight = '';
       state.testReps = '';
       state.targetReps = state.currentExercise != null
@@ -220,12 +221,19 @@ class _StrengthCalculatorDialogState extends State<StrengthCalculatorDialog> {
                           state.testWeight.isEmpty || state.testReps.isEmpty
                               ? null
                               : () {
+                                  HapticFeedback.selectionClick();
                                   state.safeCalculateIdealWorkingWeight();
                                   setState(() {});
                                 },
                       child: Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Text("CALCULATE"),
+                        child: Text(
+                          "CALCULATE",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Color(0xFF3D85C6),
@@ -284,11 +292,18 @@ class _StrengthCalculatorDialogState extends State<StrengthCalculatorDialog> {
                           SizedBox(height: 20),
                           ElevatedButton.icon(
                             onPressed: () {
+                              HapticFeedback.mediumImpact();
                               state.safeAcceptCalculatedWeight();
                               Navigator.of(context).pop();
                             },
                             icon: Icon(Icons.check, size: 18),
-                            label: Text("APPLY TO CURRENT SET"),
+                            label: Text(
+                              "APPLY TO CURRENT SET",
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Color(0xFF44CF74),
                               foregroundColor: Colors.white,
@@ -312,6 +327,8 @@ class _StrengthCalculatorDialogState extends State<StrengthCalculatorDialog> {
                         "CLOSE",
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.7),
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
                         ),
                       ),
                       style: TextButton.styleFrom(

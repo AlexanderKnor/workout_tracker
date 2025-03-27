@@ -71,7 +71,14 @@ class WorkoutCompletedCard extends StatelessWidget {
                 onFinishWorkout();
               },
               icon: Icon(Icons.check, size: 18),
-              label: Text('FINISH WORKOUT'),
+              label: Text(
+                'FINISH WORKOUT',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFF44CF74),
                 foregroundColor: Colors.white,
@@ -81,11 +88,6 @@ class WorkoutCompletedCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 elevation: 0,
-                textStyle: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
-                ),
               ),
             ),
           ],

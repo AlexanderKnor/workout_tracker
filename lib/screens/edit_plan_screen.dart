@@ -293,7 +293,6 @@ class _EditPlanScreenState extends State<EditPlanScreen>
     );
   }
 
-  // Neue Methode: Trainingstag hinzufügen
   // Trainingstag hinzufügen - Optimierte Version
   void _addTrainingDay() {
     final state = Provider.of<WorkoutTrackerState>(context, listen: false);
@@ -1264,7 +1263,7 @@ class _EditPlanScreenState extends State<EditPlanScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${exercise.sets} sets · ${exercise.minReps}-${exercise.maxReps} reps @ ${exercise.targetRIR} RIR',
+                  '${exercise.sets} sets · ${exercise.minReps}-${exercise.maxReps} reps @ ${exercise.targetRIR} RIR · ${(exercise.restTime / 60).toStringAsFixed(1)} min pause',
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.white.withOpacity(0.7),
@@ -1453,6 +1452,7 @@ class _EditPlanScreenState extends State<EditPlanScreen>
     );
   }
 
+  // Dialog zum manuellen Hinzufügen einer Übung - aktualisiert für Satzpause
   void _showManualExerciseDialog(
       BuildContext context, WorkoutTrackerState state) {
     final nameFocus = _getFocusNode('newExercise_name');
@@ -1461,6 +1461,11 @@ class _EditPlanScreenState extends State<EditPlanScreen>
     final minRepsFocus = _getFocusNode('newExercise_minReps');
     final maxRepsFocus = _getFocusNode('newExercise_maxReps');
     final rirFocus = _getFocusNode('newExercise_rir');
+    // Neuer FocusNode für die Satzpause
+    final restTimeFocus = _getFocusNode('newExercise_restTime');
+
+    // Neuer Controller für die Satzpause mit Standardwert 2.5
+    final restTimeController = TextEditingController(text: "2.5");
 
     showDialog(
       context: context,
@@ -1582,26 +1587,40 @@ class _EditPlanScreenState extends State<EditPlanScreen>
                     ),
                   ],
                 ),
+                // Neues Feld für Satzpause
+                const SizedBox(height: 16),
+                _buildStyledNumberField(
+                  label: 'Satzpause (Min)',
+                  controller: restTimeController,
+                  focusNode: restTimeFocus,
+                  onChanged: (value) {
+                    final double? minutes = double.tryParse(value);
+                    if (minutes != null && minutes >= 0) {
+                      // Umrechnung von Minuten in Sekunden
+                      state.newExerciseRestTime = (minutes * 60).round();
+                    }
+                  },
+                ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
                     Expanded(
                       child: TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(
-                                color: Colors.white.withOpacity(0.2)),
-                          ),
-                        ),
                         child: Text(
                           "CANCEL",
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                                color: Colors.white.withOpacity(0.2)),
                           ),
                         ),
                       ),
@@ -1643,6 +1662,7 @@ class _EditPlanScreenState extends State<EditPlanScreen>
     );
   }
 
+  // Dialog zum Bearbeiten einer Übung
   void _showEditExerciseDialog(BuildContext context, WorkoutTrackerState state,
       Exercise exercise, TrainingDay day) {
     final nameController = TextEditingController(text: exercise.name);
@@ -1656,6 +1676,9 @@ class _EditPlanScreenState extends State<EditPlanScreen>
         TextEditingController(text: exercise.maxReps.toString());
     final rirController =
         TextEditingController(text: exercise.targetRIR.toString());
+    // Neuer Controller für die Satzpause - umgewandelt in Minuten für die Anzeige
+    final restTimeController = TextEditingController(
+        text: (exercise.restTime / 60).toStringAsFixed(1));
 
     final nameFocus = _getFocusNode('editExercise_name_${exercise.id}');
     final descFocus = _getFocusNode('editExercise_desc_${exercise.id}');
@@ -1663,6 +1686,8 @@ class _EditPlanScreenState extends State<EditPlanScreen>
     final minRepsFocus = _getFocusNode('editExercise_minReps_${exercise.id}');
     final maxRepsFocus = _getFocusNode('editExercise_maxReps_${exercise.id}');
     final rirFocus = _getFocusNode('editExercise_rir_${exercise.id}');
+    // Neuer FocusNode für die Satzpause
+    final restTimeFocus = _getFocusNode('editExercise_restTime_${exercise.id}');
 
     String name = exercise.name;
     String description = exercise.description ?? '';
@@ -1670,6 +1695,7 @@ class _EditPlanScreenState extends State<EditPlanScreen>
     int minReps = exercise.minReps;
     int maxReps = exercise.maxReps;
     int rir = exercise.targetRIR;
+    int restTime = exercise.restTime; // Aktuelle Pausenzeit in Sekunden
 
     showDialog(
       context: context,
@@ -1685,6 +1711,7 @@ class _EditPlanScreenState extends State<EditPlanScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Dialog header
                 Center(
                   child: Column(
                     children: [
@@ -1801,6 +1828,20 @@ class _EditPlanScreenState extends State<EditPlanScreen>
                     ),
                   ],
                 ),
+                // Neues Feld für die Satzpause
+                const SizedBox(height: 16),
+                _buildStyledNumberField(
+                  label: 'Satzpause (Min)',
+                  controller: restTimeController,
+                  focusNode: restTimeFocus,
+                  onChanged: (value) {
+                    final double? minutes = double.tryParse(value);
+                    if (minutes != null && minutes >= 0) {
+                      // Umrechnung von Minuten in Sekunden
+                      restTime = (minutes * 60).round();
+                    }
+                  },
+                ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -1832,8 +1873,17 @@ class _EditPlanScreenState extends State<EditPlanScreen>
                       child: ElevatedButton(
                         onPressed: () {
                           if (name.trim().isNotEmpty) {
-                            _updateExercise(state, day, exercise, name,
-                                description, sets, minReps, maxReps, rir);
+                            _updateExercise(
+                                state,
+                                day,
+                                exercise,
+                                name,
+                                description,
+                                sets,
+                                minReps,
+                                maxReps,
+                                rir,
+                                restTime);
                             Navigator.of(context).pop();
                           }
                         },
@@ -2000,6 +2050,7 @@ class _EditPlanScreenState extends State<EditPlanScreen>
     int minReps,
     int maxReps,
     int rir,
+    int restTime, // Neuer Parameter
   ) {
     final exerciseIndex =
         day.exercises.indexWhere((ex) => ex.id == oldExercise.id);
@@ -2014,6 +2065,7 @@ class _EditPlanScreenState extends State<EditPlanScreen>
         targetRIR: rir,
         categoryId: oldExercise.categoryId,
         description: description.isNotEmpty ? description : null,
+        restTime: restTime, // Neues Feld setzen
       );
 
       day.exercises[exerciseIndex] = updatedExercise;

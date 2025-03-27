@@ -1,4 +1,4 @@
-// exercise_selector.dart
+// lib/widgets/exercise_selector.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -16,18 +16,22 @@ class ExerciseSelector extends StatelessWidget {
     int minReps = template.defaultMinReps;
     int maxReps = template.defaultMaxReps;
     int rir = template.defaultRIR;
+    int restTime = 150; // Standard: 2:30 Minuten
 
     // Controller für Textfelder
     final setsController = TextEditingController(text: sets.toString());
     final minRepsController = TextEditingController(text: minReps.toString());
     final maxRepsController = TextEditingController(text: maxReps.toString());
     final rirController = TextEditingController(text: rir.toString());
+    final restTimeController =
+        TextEditingController(text: "2.5"); // 2.5 Minuten
 
     // Focus nodes for the dialog fields
     final setsFocus = FocusNode();
     final minRepsFocus = FocusNode();
     final maxRepsFocus = FocusNode();
     final rirFocus = FocusNode();
+    final restTimeFocus = FocusNode();
 
     showDialog(
       context: context,
@@ -48,12 +52,12 @@ class ExerciseSelector extends StatelessWidget {
                   child: Column(
                     children: [
                       Container(
-                        padding: EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Color(0xFF3D85C6).withOpacity(0.15),
+                          color: const Color(0xFF3D85C6).withOpacity(0.15),
                         ),
-                        child: Icon(
+                        child: const Icon(
                           Icons.fitness_center,
                           color: Color(0xFF3D85C6),
                           size: 28,
@@ -174,6 +178,23 @@ class ExerciseSelector extends StatelessWidget {
                     ),
                   ],
                 ),
+
+                // Satzpause Feld
+                SizedBox(height: 16),
+                _buildStyledNumberField(
+                  context: context,
+                  label: 'Satzpause (Min)',
+                  controller: restTimeController,
+                  focusNode: restTimeFocus,
+                  onChanged: (value) {
+                    double? minutes = double.tryParse(value);
+                    if (minutes != null && minutes >= 0) {
+                      restTime =
+                          (minutes * 60).round(); // Konvertiere in Sekunden
+                    }
+                  },
+                ),
+
                 SizedBox(height: 24),
 
                 // Dialog buttons
@@ -211,7 +232,8 @@ class ExerciseSelector extends StatelessWidget {
                               customSets: sets,
                               customMinReps: minReps,
                               customMaxReps: maxReps,
-                              customRIR: rir);
+                              customRIR: rir,
+                              customRestTime: restTime); // Neuer Parameter
                           Navigator.of(context).pop();
                         },
                         child: Text(

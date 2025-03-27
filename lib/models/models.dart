@@ -11,6 +11,7 @@ class Exercise {
   int targetRIR;
   String? categoryId; // Optional: Kategorie-ID für die Gruppierung
   String? description; // Optional: Beschreibung der Übung
+  int restTime; // Neue Eigenschaft: Zeit in Sekunden für die Pause zwischen den Sätzen
 
   Exercise({
     required this.id,
@@ -21,6 +22,7 @@ class Exercise {
     required this.targetRIR,
     this.categoryId,
     this.description,
+    this.restTime = 150, // Standard: 2:30 Minuten (150 Sekunden)
   });
 }
 

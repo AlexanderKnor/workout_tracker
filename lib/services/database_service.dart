@@ -24,16 +24,26 @@ class DatabaseService {
     // Pfad zur Datenbank im App-Speicher ermitteln
     String path = join(await getDatabasesPath(), 'workout_tracker.db');
 
-    // Datenbank Ã¶ffnen oder erstellen, wenn sie nicht existiert
+    // Datenbank öffnen oder erstellen, wenn sie nicht existiert
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // Version erhöht, um die Migration zu unterstützen
       onCreate: _createDb,
+      onUpgrade: _upgradeDb,
     );
   }
 
+  // Migration-Methode für Datenbankupdates
+  Future<void> _upgradeDb(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Füge die neue Spalte zur Exercises-Tabelle hinzu
+      await db.execute(
+          'ALTER TABLE exercises ADD COLUMN rest_time INTEGER DEFAULT 150');
+    }
+  }
+
   Future<void> _createDb(Database db, int version) async {
-    // Tabelle fÃ¼r TrainingsplÃ¤ne
+    // Tabelle für Trainingspläne
     await db.execute('''
       CREATE TABLE training_plans(
         id TEXT PRIMARY KEY,
@@ -41,7 +51,7 @@ class DatabaseService {
       )
     ''');
 
-    // Tabelle fÃ¼r Trainingstage
+    // Tabelle für Trainingstage
     await db.execute('''
       CREATE TABLE training_days(
         id TEXT PRIMARY KEY,
@@ -51,7 +61,7 @@ class DatabaseService {
       )
     ''');
 
-    // Tabelle fÃ¼r Ãœbungen
+    // Tabelle für Übungen
     await db.execute('''
       CREATE TABLE exercises(
         id TEXT PRIMARY KEY,
@@ -63,11 +73,12 @@ class DatabaseService {
         day_id TEXT,
         category_id TEXT,
         description TEXT,
+        rest_time INTEGER DEFAULT 150,
         FOREIGN KEY(day_id) REFERENCES training_days(id) ON DELETE CASCADE
       )
     ''');
 
-    // Tabelle fÃ¼r Workout-Logs
+    // Tabelle für Workout-Logs
     await db.execute('''
       CREATE TABLE workout_logs(
         id TEXT PRIMARY KEY,
@@ -79,7 +90,7 @@ class DatabaseService {
       )
     ''');
 
-    // Tabelle fÃ¼r Set-Logs
+    // Tabelle für Set-Logs
     await db.execute('''
       CREATE TABLE set_logs(
         id TEXT PRIMARY KEY,
@@ -104,26 +115,26 @@ class DatabaseService {
     ''');
   }
 
-  // -------------------- CRUD Operationen fÃ¼r TrainingsplÃ¤ne --------------------
+  // -------------------- CRUD Operationen für Trainingspläne --------------------
 
-  // Alle TrainingsplÃ¤ne abrufen
+  // Alle Trainingspläne abrufen
   Future<List<TrainingPlan>> getTrainingPlans() async {
     final Database db = await database;
 
-    // PlÃ¤ne abfragen
+    // Pläne abfragen
     final List<Map<String, dynamic>> planMaps =
         await db.query('training_plans');
 
-    // Leere Liste zurÃ¼ckgeben, wenn keine PlÃ¤ne vorhanden
+    // Leere Liste zurückgeben, wenn keine Pläne vorhanden
     if (planMaps.isEmpty) {
       return [];
     }
 
-    // Liste der PlÃ¤ne erstellen
+    // Liste der Pläne erstellen
     List<TrainingPlan> plans = [];
 
     for (var planMap in planMaps) {
-      // Trainingstage fÃ¼r diesen Plan abrufen
+      // Trainingstage für diesen Plan abrufen
       final List<Map<String, dynamic>> dayMaps = await db.query(
         'training_days',
         where: 'plan_id = ?',
@@ -133,7 +144,7 @@ class DatabaseService {
       List<TrainingDay> days = [];
 
       for (var dayMap in dayMaps) {
-        // Ãœbungen fÃ¼r diesen Tag abrufen
+        // Übungen für diesen Tag abrufen
         final List<Map<String, dynamic>> exerciseMaps = await db.query(
           'exercises',
           where: 'day_id = ?',
@@ -150,6 +161,7 @@ class DatabaseService {
             targetRIR: exerciseMap['target_rir'],
             categoryId: exerciseMap['category_id'],
             description: exerciseMap['description'],
+            restTime: exerciseMap['rest_time'] ?? 150, // Laden der Pausenzeit
           );
         }).toList();
 
@@ -174,7 +186,7 @@ class DatabaseService {
   Future<void> saveTrainingPlan(TrainingPlan plan) async {
     final Database db = await database;
 
-    // Transaktion starten, um Datenkonsistenz zu gewÃ¤hrleisten
+    // Transaktion starten, um Datenkonsistenz zu gewährleisten
     await db.transaction((txn) async {
       // Plan speichern
       await txn.insert(
@@ -186,7 +198,7 @@ class DatabaseService {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
 
-      // Alle Trainingstage fÃ¼r diesen Plan speichern
+      // Alle Trainingstage für diesen Plan speichern
       for (var day in plan.trainingDays) {
         await txn.insert(
           'training_days',
@@ -198,7 +210,7 @@ class DatabaseService {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
 
-        // Alle Ãœbungen fÃ¼r diesen Tag speichern
+        // Alle Übungen für diesen Tag speichern
         for (var exercise in day.exercises) {
           await txn.insert(
             'exercises',
@@ -212,6 +224,7 @@ class DatabaseService {
               'day_id': day.id,
               'category_id': exercise.categoryId,
               'description': exercise.description,
+              'rest_time': exercise.restTime, // Speichern der Pausenzeit
             },
             conflictAlgorithm: ConflictAlgorithm.replace,
           );
@@ -220,7 +233,7 @@ class DatabaseService {
     });
   }
 
-  // Trainingsplan aktualisieren (kompletten Plan mit Tagen und Ãœbungen)
+  // Trainingsplan aktualisieren (kompletten Plan mit Tagen und Übungen)
   Future<void> updateTrainingPlan(TrainingPlan plan) async {
     final Database db = await database;
 
@@ -236,7 +249,7 @@ class DatabaseService {
         whereArgs: [plan.id],
       );
 
-      // Bestehende Tage und Ãœbungen fÃ¼r diesen Plan abrufen
+      // Bestehende Tage und Übungen für diesen Plan abrufen
       final List<Map<String, dynamic>> existingDays = await txn.query(
         'training_days',
         where: 'plan_id = ?',
@@ -247,7 +260,7 @@ class DatabaseService {
       final Set<String> updatedDayIds =
           plan.trainingDays.map((day) => day.id).toSet();
 
-      // Tage lÃ¶schen, die nicht mehr existieren
+      // Tage löschen, die nicht mehr existieren
       for (var existingDay in existingDays) {
         if (!updatedDayIds.contains(existingDay['id'])) {
           await txn.delete(
@@ -258,7 +271,7 @@ class DatabaseService {
         }
       }
 
-      // Tage und Ãœbungen aktualisieren oder erstellen
+      // Tage und Übungen aktualisieren oder erstellen
       for (var day in plan.trainingDays) {
         // Tag aktualisieren oder erstellen
         await txn.insert(
@@ -271,18 +284,18 @@ class DatabaseService {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
 
-        // Bestehende Ãœbungen fÃ¼r diesen Tag abrufen
+        // Bestehende Übungen für diesen Tag abrufen
         final List<Map<String, dynamic>> existingExercises = await txn.query(
           'exercises',
           where: 'day_id = ?',
           whereArgs: [day.id],
         );
 
-        // Set der IDs der aktualisierten Ãœbungen erstellen
+        // Set der IDs der aktualisierten Übungen erstellen
         final Set<String> updatedExerciseIds =
             day.exercises.map((exercise) => exercise.id).toSet();
 
-        // Ãœbungen lÃ¶schen, die nicht mehr existieren
+        // Übungen löschen, die nicht mehr existieren
         for (var existingExercise in existingExercises) {
           if (!updatedExerciseIds.contains(existingExercise['id'])) {
             await txn.delete(
@@ -293,7 +306,7 @@ class DatabaseService {
           }
         }
 
-        // Ãœbungen aktualisieren oder erstellen
+        // Übungen aktualisieren oder erstellen
         for (var exercise in day.exercises) {
           await txn.insert(
             'exercises',
@@ -307,6 +320,7 @@ class DatabaseService {
               'day_id': day.id,
               'category_id': exercise.categoryId,
               'description': exercise.description,
+              'rest_time': exercise.restTime, // Speichern der Pausenzeit
             },
             conflictAlgorithm: ConflictAlgorithm.replace,
           );
@@ -315,7 +329,7 @@ class DatabaseService {
     });
   }
 
-  // Trainingsplan lÃ¶schen
+  // Trainingsplan löschen
   Future<void> deleteTrainingPlan(String planId) async {
     final Database db = await database;
 
@@ -326,7 +340,7 @@ class DatabaseService {
     );
   }
 
-  // -------------------- CRUD Operationen fÃ¼r Workout-Logs --------------------
+  // -------------------- CRUD Operationen für Workout-Logs --------------------
 
   // Alle Workout-Logs abrufen
   Future<List<WorkoutLog>> getWorkoutLogs() async {
@@ -335,7 +349,7 @@ class DatabaseService {
     // Alle Workout-Logs abfragen
     final List<Map<String, dynamic>> logMaps = await db.query('workout_logs');
 
-    // Leere Liste zurÃ¼ckgeben, wenn keine Logs vorhanden
+    // Leere Liste zurückgeben, wenn keine Logs vorhanden
     if (logMaps.isEmpty) {
       return [];
     }
@@ -344,7 +358,7 @@ class DatabaseService {
     List<WorkoutLog> logs = [];
 
     for (var logMap in logMaps) {
-      // Set-Logs fÃ¼r dieses Workout abrufen
+      // Set-Logs für dieses Workout abrufen
       final List<Map<String, dynamic>> setMaps = await db.query(
         'set_logs',
         where: 'workout_id = ?',

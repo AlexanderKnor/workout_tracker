@@ -124,27 +124,59 @@ class SetsTable extends StatelessWidget {
     bool isCurrentSet = index == state.currentSetIndex;
     bool isCompleted = state.currentExerciseSets[index].completed;
 
-    // Get progression suggestion for this set if it's the current set
-    bool hasProgressionSuggestion =
-        isCurrentSet && state.progressionSuggestion != null;
+    // Neue Logik: Prüfen ob dieser Satz bearbeitet werden kann
+    bool canEditThisSet = _canEditSet(state, index);
+
+    // Current values
+    String currentWeight = state.currentExerciseSets[index].weight;
+    String currentReps = state.currentExerciseSets[index].reps;
+    String currentRIR = state.currentExerciseSets[index].rir;
+
+    // Get progression suggestion
+    final suggestion = state.progressionSuggestion;
+
+    // Check if current values differ from suggestion (if there is one)
+    bool valuesDifferFromSuggestion = false;
+    if (suggestion != null && isCurrentSet) {
+      valuesDifferFromSuggestion = suggestion.weight != currentWeight ||
+          suggestion.reps != currentReps ||
+          suggestion.rir != currentRIR;
+    }
+
+    // Show suggestion if it exists and either values differ or it's a fresh suggestion
+    bool showProgressionSuggestion =
+        isCurrentSet && suggestion != null && valuesDifferFromSuggestion;
+
+    // If this set is selected, automatically trigger calculation
+    if (isCurrentSet && !isCompleted && canEditThisSet) {
+      // Use a post-frame callback to avoid calling during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        state.calculateProgressionSuggestion(exercise.id, index + 1);
+      });
+    }
 
     return Column(
       children: [
         InkWell(
-          onTap: !isCompleted
+          onTap: (!isCompleted && canEditThisSet)
               ? () {
                   HapticFeedback.selectionClick();
                   state.setCurrentSet(index);
+
+                  // Calculate progression suggestion when set is selected
+                  if (!isCompleted) {
+                    state.calculateProgressionSuggestion(
+                        exercise.id, index + 1);
+                  }
                 }
-              : null,
+              : null, // Deaktiviere onTap für abgeschlossene oder nicht editierbare Sätze
           child: Container(
             decoration: BoxDecoration(
               border: Border(
                 top: BorderSide(color: Colors.white.withOpacity(0.05)),
               ),
-              color: isCompleted
-                  ? Color(0xFF253B59).withOpacity(0.3)
-                  : (isCurrentSet ? Color(0xFF3D85C6).withOpacity(0.15) : null),
+              color: _getRowColor(
+                  state, index, isCurrentSet, isCompleted, canEditThisSet),
             ),
             padding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
             child: Row(
@@ -156,23 +188,23 @@ class SetsTable extends StatelessWidget {
                   margin: EdgeInsets.only(right: 8),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isCompleted
-                        ? Color(0xFF44CF74)
-                        : (isCurrentSet
-                            ? Color(0xFF3D85C6)
-                            : Color(0xFF253B59)),
+                    color: _getSetIndicatorColor(
+                        isCompleted, isCurrentSet, canEditThisSet),
                   ),
                   child: Center(
                     child: isCompleted
                         ? Icon(Icons.check, color: Colors.white, size: 14)
-                        : Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white,
-                              fontSize: 12,
-                            ),
-                          ),
+                        : (!canEditThisSet && !isCompleted)
+                            ? Icon(Icons.lock,
+                                color: Colors.white.withOpacity(0.6), size: 14)
+                            : Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              ),
                   ),
                 ),
 
@@ -182,7 +214,7 @@ class SetsTable extends StatelessWidget {
                   margin: EdgeInsets.only(right: 4),
                   child: _buildImprovedTextField(
                     controller: state.weightControllers[index],
-                    enabled: isCurrentSet && !isCompleted,
+                    enabled: isCurrentSet && !isCompleted && canEditThisSet,
                     onChanged: (value) =>
                         state.updateSetData(index, 'weight', value),
                     suffix: 'kg',
@@ -198,7 +230,7 @@ class SetsTable extends StatelessWidget {
                   margin: EdgeInsets.only(right: 4),
                   child: _buildImprovedTextField(
                     controller: state.repsControllers[index],
-                    enabled: isCurrentSet && !isCompleted,
+                    enabled: isCurrentSet && !isCompleted && canEditThisSet,
                     onChanged: (value) =>
                         state.updateSetData(index, 'reps', value),
                     hintText: '0',
@@ -213,7 +245,7 @@ class SetsTable extends StatelessWidget {
                   margin: EdgeInsets.only(right: 4),
                   child: _buildImprovedTextField(
                     controller: state.rirControllers[index],
-                    enabled: isCurrentSet && !isCompleted,
+                    enabled: isCurrentSet && !isCompleted && canEditThisSet,
                     onChanged: (value) =>
                         state.updateSetData(index, 'rir', value),
                     hintText: '0',
@@ -227,11 +259,11 @@ class SetsTable extends StatelessWidget {
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                     decoration: BoxDecoration(
-                      color: isCurrentSet
+                      color: isCurrentSet && canEditThisSet
                           ? Color(0xFF3D85C6).withOpacity(0.1)
                           : Colors.white.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(8),
-                      border: isCurrentSet
+                      border: isCurrentSet && canEditThisSet
                           ? Border.all(
                               color: Color(0xFF3D85C6).withOpacity(0.3),
                               width: 1,
@@ -242,7 +274,7 @@ class SetsTable extends StatelessWidget {
                     child: Text(
                       oneRM != null ? oneRM.toString() : '-',
                       style: TextStyle(
-                        color: isCurrentSet
+                        color: isCurrentSet && canEditThisSet
                             ? Color(0xFF3D85C6)
                             : Colors.white.withOpacity(0.8),
                         fontWeight: FontWeight.w500,
@@ -256,14 +288,77 @@ class SetsTable extends StatelessWidget {
         ),
 
         // Show progression suggestion directly under the current set
-        if (hasProgressionSuggestion)
+        if (showProgressionSuggestion && canEditThisSet)
           _buildProgressionSuggestionRow(context, state),
       ],
     );
   }
 
+  // Neue Methode: Prüft, ob ein Satz bearbeitet werden kann (basierend auf der sequenziellen Logik)
+  bool _canEditSet(WorkoutTrackerState state, int index) {
+    // Bereits abgeschlossene Sätze können nicht mehr bearbeitet werden
+    if (state.currentExerciseSets[index].completed) {
+      return false;
+    }
+
+    // Satz 1 kann immer bearbeitet werden, wenn er nicht abgeschlossen ist
+    if (index == 0) {
+      return true;
+    }
+
+    // Für Sätze > 1: Prüfen, ob alle vorherigen Sätze abgeschlossen sind
+    for (int i = 0; i < index; i++) {
+      if (!state.currentExerciseSets[i].completed) {
+        return false; // Ein vorheriger Satz ist nicht abgeschlossen
+      }
+    }
+
+    // Alle vorherigen Sätze sind abgeschlossen
+    return true;
+  }
+
+  // Neue Methode: Bestimmt die Hintergrundfarbe der Zeile
+  Color _getRowColor(WorkoutTrackerState state, int index, bool isCurrentSet,
+      bool isCompleted, bool canEditThisSet) {
+    if (isCompleted) {
+      return Color(0xFF253B59).withOpacity(0.3); // Abgeschlossene Sätze
+    }
+
+    if (isCurrentSet && canEditThisSet) {
+      return Color(0xFF3D85C6)
+          .withOpacity(0.15); // Aktiver und editierbarer Satz
+    }
+
+    if (!canEditThisSet) {
+      return Color(0xFF1C2F49); // Gesperrte Sätze (etwas dunkler)
+    }
+
+    return Colors.transparent; // Standard
+  }
+
+  // Neue Methode: Bestimmt die Farbe des Set-Indikators
+  Color _getSetIndicatorColor(
+      bool isCompleted, bool isCurrentSet, bool canEditThisSet) {
+    if (isCompleted) {
+      return Color(0xFF44CF74); // Abgeschlossen: Grün
+    }
+
+    if (!canEditThisSet) {
+      return Color(0xFF253B59).withOpacity(0.5); // Gesperrt: Dunkelgrau
+    }
+
+    if (isCurrentSet) {
+      return Color(0xFF3D85C6); // Aktiv: Blau
+    }
+
+    return Color(0xFF253B59); // Standard: Dunkelgrau
+  }
+
   Widget _buildProgressionSuggestionRow(
       BuildContext context, WorkoutTrackerState state) {
+    // Make sure progression suggestion is not null
+    if (state.progressionSuggestion == null) return SizedBox.shrink();
+
     return Container(
       decoration: BoxDecoration(
         color: Color(0xFF3D85C6).withOpacity(0.1),
@@ -362,7 +457,10 @@ class SetsTable extends StatelessWidget {
 
               // Apply button
               TextButton(
-                onPressed: () => state.safeAcceptProgressionSuggestion(),
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  state.safeAcceptProgressionSuggestion();
+                },
                 child: Text(
                   "APPLY",
                   style: TextStyle(
