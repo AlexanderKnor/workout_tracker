@@ -1,5 +1,6 @@
 // lib/providers/modules/workout_session.dart
 import 'package:flutter/material.dart';
+import 'dart:async'; // Für Timer-Funktionalität
 import '../../models/models.dart';
 import '../../services/database_service.dart';
 
@@ -23,9 +24,20 @@ class WorkoutSession {
   List<TextEditingController> _repsControllers = [];
   List<TextEditingController> _rirControllers = [];
 
-  // Neue Eigenschaften für den Rest Timer
+  // Properties for the Rest Timer
   bool _showRestTimer = false;
-  int _currentRestTime = 0; // Aktuelle Pausenzeit in Sekunden
+  int _currentRestTime = 0; // Current rest time in seconds
+  int _initialRestTime = 0; // Initial rest time value
+  UniqueKey _timerKey = UniqueKey(); // Key for timer reset
+
+  // NEW: ValueNotifier for timer updates
+  final ValueNotifier<int> timerNotifier = ValueNotifier<int>(0);
+
+  // Timer-bezogene Variablen
+  Timer? _restTimer;
+  DateTime? _timerStartTime;
+  DateTime? _timerPauseTime;
+  bool _isTimerRunning = false;
 
   // Constructor
   WorkoutSession(this._databaseService, this._notifyListeners);
@@ -45,25 +57,28 @@ class WorkoutSession {
   // Rest Timer Getters
   bool get showRestTimer => _showRestTimer;
   int get currentRestTime => _currentRestTime;
+  int get initialRestTime => _initialRestTime; // Getter für initialRestTime
+  UniqueKey get timerKey => _timerKey; // Getter for the timer key
+  bool get isTimerRunning => _isTimerRunning; // Getter für Timer-Status
 
   // Check if all exercises in the day are completed
   bool get isAllExercisesCompleted {
     if (_currentDay == null) return false;
 
-    // Prüfe alle Übungen, nicht nur die aktuelle
+    // Check all exercises, not just the current one
     for (var exercise in _currentDay!.exercises) {
-      // Finde alle Sets für diese Übung in den Logs
+      // Find all sets for this exercise in the logs
       List<SetLog> exerciseLogs =
           _workoutLog.where((log) => log.exerciseId == exercise.id).toList();
 
-      // Wenn die Anzahl der Logs nicht mit der Anzahl der erwarteten Sets übereinstimmt,
-      // ist die Übung nicht vollständig abgeschlossen
+      // If the number of logs doesn't match the expected sets,
+      // the exercise is not completely finished
       if (exerciseLogs.length < exercise.sets) {
         return false;
       }
     }
 
-    // Alle Übungen haben die erwartete Anzahl von Sets im Log
+    // All exercises have the expected number of sets in the log
     return true;
   }
 
@@ -75,7 +90,84 @@ class WorkoutSession {
     return currentIndex == _currentDay!.exercises.length - 1;
   }
 
-  // ======== Methods ========
+  // ======== Timer-Methoden ========
+
+  // Timer starten oder fortsetzen
+  void _startOrResumeTimer() {
+    if (_restTimer != null && _restTimer!.isActive) {
+      return; // Timer läuft bereits
+    }
+
+    // Timer ist nicht aktiv, starten oder fortsetzen
+    _isTimerRunning = true;
+
+    // Wenn Timer pausiert wurde, berechne die verbleibende Zeit
+    if (_timerPauseTime != null && _timerStartTime != null) {
+      // Berechne wie lange der Timer pausiert war
+      final pauseDuration = DateTime.now().difference(_timerPauseTime!);
+      // Aktualisiere die Startzeit entsprechend
+      _timerStartTime = _timerStartTime!.add(pauseDuration);
+      _timerPauseTime = null;
+    } else if (_timerStartTime == null) {
+      // Neuer Timer wird gestartet
+      _timerStartTime = DateTime.now();
+    }
+
+    // Timer starten mit 1-Sekunden-Intervall
+    _restTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      // Berechne verstrichene Zeit seit Start
+      final elapsedSeconds =
+          DateTime.now().difference(_timerStartTime!).inSeconds;
+
+      // Aktualisiere verbleibende Zeit
+      if (_initialRestTime - elapsedSeconds <= 0) {
+        // Timer ist abgelaufen
+        _currentRestTime = 0;
+        timerNotifier.value = 0; // Update notifier
+        _stopTimer();
+        _showRestTimer = false;
+        _notifyListeners(); // Only notify on completion
+      } else {
+        // Aktualisiere verbleibende Zeit
+        _currentRestTime = _initialRestTime - elapsedSeconds;
+        timerNotifier.value = _currentRestTime; // Update notifier
+        // Don't call _notifyListeners() here to prevent unnecessary rebuilds
+      }
+    });
+  }
+
+  // Timer pausieren
+  void _pauseTimer() {
+    if (_restTimer != null && _restTimer!.isActive) {
+      _restTimer!.cancel();
+      _timerPauseTime = DateTime.now();
+      _isTimerRunning = false;
+    }
+  }
+
+  // Timer stoppen und zurücksetzen
+  void _stopTimer() {
+    if (_restTimer != null) {
+      _restTimer!.cancel();
+      _restTimer = null;
+    }
+    _timerStartTime = null;
+    _timerPauseTime = null;
+    _isTimerRunning = false;
+  }
+
+  // Workout-Zustand zurücksetzen ohne Datenbank-Interaktion
+  void resetWorkoutState() {
+    _workoutLog = [];
+    _currentPlan = null;
+    _currentDay = null;
+    _currentExercise = null;
+    _currentExerciseSets = [];
+    _showRestTimer = false;
+    _stopTimer(); // Timer stoppen
+    _disposeControllers();
+    _notifyListeners();
+  }
 
   // Load workout logs from database
   Future<void> loadWorkoutLogs() async {
@@ -105,8 +197,8 @@ class WorkoutSession {
     _notifyListeners();
   }
 
-  // Öffentliche Methode für das Initialisieren der Sets einer Übung
-  // Dies wird von WorkoutTrackerState aufgerufen
+  // Public method for initializing the sets of an exercise
+  // This is called by WorkoutTrackerState
   void initializeExerciseSetsPublic(Exercise exercise) {
     _initializeExerciseSets(exercise);
   }
@@ -135,15 +227,7 @@ class WorkoutSession {
     }
 
     // Reset states
-    _workoutLog = [];
-    _currentPlan = null;
-    _currentDay = null;
-    _currentExercise = null;
-    _currentExerciseSets = [];
-    _showRestTimer = false;
-    _disposeControllers();
-
-    _notifyListeners();
+    resetWorkoutState();
   }
 
   // Dispose controllers to prevent memory leaks
@@ -181,6 +265,7 @@ class WorkoutSession {
     _currentExercise = selectedExercise;
     _currentSetIndex = 0; // Focus on first set
     _showRestTimer = false; // Hide rest timer when switching exercises
+    _stopTimer(); // Stoppe den Timer beim Wechsel der Übung
 
     // Initialize sets for new exercise
     _initializeExerciseSets(selectedExercise);
@@ -188,7 +273,7 @@ class WorkoutSession {
     _notifyListeners();
   }
 
-  // Initialize set data for an exercise - ÜBERARBEITETE METHODE
+  // Initialize set data for an exercise - REVISED METHOD
   void _initializeExerciseSets(Exercise exercise) {
     _currentExerciseSets = [];
     _currentSetIndex = 0; // Start with the first set
@@ -456,19 +541,38 @@ class WorkoutSession {
       _workoutLog.add(logEntry);
     }
 
-    // Check if there are more sets for this exercise
-    bool hasMoreSets = _findNextUncompletedSetIndex() != -1;
-
-    // Show rest timer if there are more sets left for this exercise
-    if (hasMoreSets && _currentExercise!.restTime > 0) {
-      _currentRestTime = _currentExercise!.restTime;
-      _showRestTimer = true;
-    } else {
-      _showRestTimer = false;
-    }
-
     // Move to next uncompleted set if available
     int nextSetIndex = _findNextUncompletedSetIndex();
+
+    // Only show the timer if:
+    // 1. There are more sets for this exercise (next uncompleted set exists)
+    // 2. Current exercise has a rest time defined
+    // 3. We're not on the last set of the exercise
+    if (nextSetIndex >= 0 && _currentExercise!.restTime > 0) {
+      // There is another set to do in this exercise
+      _initialRestTime = _currentExercise!.restTime; // Set initial rest time
+      _currentRestTime = _initialRestTime; // Set current rest time
+      _showRestTimer = true;
+
+      // Stoppe alten Timer, falls einer läuft
+      _stopTimer();
+
+      // Starte neuen Timer
+      _timerStartTime = DateTime.now();
+      _startOrResumeTimer();
+
+      // Generate a unique key for the timer to force a rebuild
+      _timerKey = UniqueKey();
+
+      // Update the timer notifier
+      timerNotifier.value = _currentRestTime;
+    } else {
+      // All sets are complete for this exercise or we're moving to a new exercise
+      _showRestTimer = false;
+      _stopTimer();
+    }
+
+    // Set focus to next uncompleted set if it exists
     if (nextSetIndex >= 0) {
       setCurrentSet(nextSetIndex);
     }
@@ -476,9 +580,25 @@ class WorkoutSession {
     _notifyListeners();
   }
 
-  // Neue Methode zum Beenden des Rest Timers
+  // Method to end the Rest Timer
   void endRestTimer() {
     _showRestTimer = false;
+    _stopTimer();
+    _notifyListeners();
+  }
+
+  // Methode zur Reaktion auf Workout-Minimierung
+  void onWorkoutMinimized() {
+    // Timer läuft im Hintergrund weiter, keine Änderung notwendig
+    _notifyListeners();
+  }
+
+  // Methode zur Reaktion auf Workout-Maximierung
+  void onWorkoutMaximized() {
+    // Timer prüfen und ggf. aktualisieren
+    if (_showRestTimer && !_isTimerRunning) {
+      _startOrResumeTimer();
+    }
     _notifyListeners();
   }
 
@@ -498,38 +618,39 @@ class WorkoutSession {
       }
     }
 
-    // If all sets are completed, return the last set index
+    // If all sets are completed, return -1
     return -1;
   }
 
-  // Eine Methode, um zur ersten unvollständigen Übung zu navigieren
+  // A method to navigate to the first incomplete exercise
   void navigateToNextIncompleteExercise() {
     if (_currentPlan == null || _currentDay == null) return;
 
-    // Wir beginnen immer mit der ersten Übung des Trainingstages
-    // anstatt von der aktuellen Position aus zu suchen
+    // We always start with the first exercise of the workout day
+    // instead of searching from the current position
     for (int i = 0; i < _currentDay!.exercises.length; i++) {
-      // Die Übung an dieser Position abrufen
+      // Get the exercise at this position
       Exercise exercise = _currentDay!.exercises[i];
 
-      // Prüfen, ob diese Übung unvollständig ist
+      // Check if this exercise is incomplete
       List<SetLog> exerciseLogs =
           _workoutLog.where((log) => log.exerciseId == exercise.id).toList();
 
       if (exerciseLogs.length < exercise.sets) {
-        // Unvollständige Übung gefunden - zu dieser wechseln
+        // Found an incomplete exercise - switch to it
         _currentExercise = exercise;
         _currentSetIndex = 0;
-        _showRestTimer = false; // Timer ausblenden beim Wechseln
+        _showRestTimer = false; // Hide timer when switching
+        _stopTimer(); // Timer stoppen bei Übungswechsel
         _initializeExerciseSets(exercise);
 
-        // Beenden, wenn wir eine unvollständige Übung gefunden haben
+        // Exit when we've found an incomplete exercise
         return;
       }
     }
 
-    // Falls wir hier landen, sind alle Übungen vollständig
-    // Wir bleiben bei der aktuellen Übung
+    // If we get here, all exercises are complete
+    // We'll stay on the current exercise
   }
 
   // Move to next exercise
@@ -546,29 +667,30 @@ class WorkoutSession {
       }
     }
 
-    // Prüfen, ob alle Sets der aktuellen Übung abgeschlossen sind
+    // Check if all sets of the current exercise are completed
     bool isCurrentExerciseCompleted =
         _currentExerciseSets.every((set) => set.completed);
 
-    // Wenn die aktuelle Übung abgeschlossen ist, zur nächsten unvollständigen Übung navigieren
+    // If the current exercise is completed, navigate to the next incomplete exercise
     if (isCurrentExerciseCompleted) {
       navigateToNextIncompleteExercise();
     } else {
-      // Andernfalls zum nächsten unvollständigen Set der aktuellen Übung gehen
+      // Otherwise go to the next incomplete set of the current exercise
       int nextSetIndex = _findNextUncompletedSetIndex();
       if (nextSetIndex >= 0) {
         _currentSetIndex = nextSetIndex;
       }
     }
 
-    // UI aktualisieren
+    // Update UI
     _notifyListeners();
   }
 
   // Skip current exercise and move to next
   void skipExercise() {
     _showRestTimer =
-        false; // Verstecke den Timer wenn zur nächsten Übung gewechselt wird
+        false; // Hide the timer when switching to the next exercise
+    _stopTimer(); // Timer stoppen bei Übungswechsel
 
     if (_currentPlan == null || _currentDay == null || _currentExercise == null)
       return;
@@ -633,5 +755,7 @@ class WorkoutSession {
   // Dispose resources
   void dispose() {
     _disposeControllers();
+    _stopTimer(); // Timer stoppen
+    timerNotifier.dispose(); // Dispose the timer notifier
   }
 }

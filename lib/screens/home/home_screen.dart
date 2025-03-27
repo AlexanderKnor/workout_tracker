@@ -1,5 +1,6 @@
 // lib/screens/home/home_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/workout_provider.dart';
 import '../../models/models.dart'; // Wichtig: Models importieren
@@ -78,6 +79,118 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // Update plan card parallax effects
     setState(() {});
+  }
+
+  // Neue Methode: Prüfen, ob ein Workout gestartet werden kann
+  void _handleWorkoutStart(BuildContext context, WorkoutTrackerState state,
+      TrainingPlan plan, TrainingDay day) {
+    // Prüfen, ob bereits ein Workout aktiv ist
+    if (state.isWorkoutActive) {
+      // Wenn ja, Hinweis anzeigen
+      _showActiveWorkoutDialog(context, state);
+    } else {
+      // Wenn nein, Workout starten
+      widget.onWorkoutPressed(plan, day);
+    }
+  }
+
+  // Dialog anzeigen, wenn bereits ein Workout aktiv ist
+  void _showActiveWorkoutDialog(
+      BuildContext context, WorkoutTrackerState state) {
+    // Bestimme Workout-Informationen
+    String planName = state.currentPlan?.name ?? "Aktives Workout";
+    String dayName = state.currentDay?.name ?? "";
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Color(0xFF1C2F49),
+        titlePadding: EdgeInsets.all(24),
+        contentPadding: EdgeInsets.all(24),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFF3D85C6).withOpacity(0.2),
+              ),
+              child: Icon(
+                Icons.fitness_center,
+                color: Color(0xFF3D85C6),
+                size: 28,
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Bereits aktives Workout',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Du hast bereits ein Workout in Bearbeitung: "$planName"${dayName.isNotEmpty ? " ($dayName)" : ""}.\n\nSchließe oder beende dein aktuelles Workout, bevor du ein neues startest.',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 15,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white.withOpacity(0.7),
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                      ),
+                    ),
+                    child: Text('ABBRECHEN'),
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      // Dialog schließen
+                      Navigator.of(context).pop();
+
+                      // Zum aktiven Workout zurückkehren
+                      state.maximizeWorkout();
+                      widget.onWorkoutPressed(
+                          state.currentPlan!, state.currentDay!);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF3D85C6),
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text('ZUM WORKOUT'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -242,7 +355,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Consumer<WorkoutTrackerState>(
       builder: (context, state, child) {
-        // Zeige Ladebildschirm wÃ¤hrend Daten geladen werden
+        // Zeige Ladebildschirm während Daten geladen werden
         if (state.isLoading) {
           return _buildLoadingScreen();
         }
@@ -407,7 +520,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       plan: state.activePlan!,
                       parallaxOffset: 0.0,
                       onEditPressed: widget.onEditPressed,
-                      onWorkoutPressed: widget.onWorkoutPressed,
+                      // Geändert - jetzt mit Prüfung auf aktives Workout
+                      onWorkoutPressed: (plan, day) =>
+                          _handleWorkoutStart(context, state, plan, day),
                     ),
                   ),
 

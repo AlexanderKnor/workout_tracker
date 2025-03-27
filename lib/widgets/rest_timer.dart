@@ -2,6 +2,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/workout_provider.dart';
 
 class RestTimer extends StatefulWidget {
   final int initialDuration; // in seconds
@@ -20,229 +22,272 @@ class RestTimer extends StatefulWidget {
 }
 
 class _RestTimerState extends State<RestTimer> with TickerProviderStateMixin {
-  late Timer _timer;
   late int _secondsRemaining;
-  bool _isPaused = false;
+  bool _isNegative = false;
   late AnimationController _progressController;
 
   @override
   void initState() {
     super.initState();
-    _secondsRemaining = widget.initialDuration;
+
+    // Initial seconds remaining from the state
+    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+    _secondsRemaining = state.currentRestTime;
+    _isNegative = _secondsRemaining <= 0;
+
+    // Animation controller for normal countdown
     _progressController = AnimationController(
       vsync: this,
       duration: Duration(seconds: widget.initialDuration),
     );
-    _startTimer();
-    _progressController.reverse(from: 1.0); // Countdown animation
-    HapticFeedback.mediumImpact(); // Vibration feedback when timer starts
-  }
 
-  void _startTimer() {
-    _timer = Timer.periodic(Duration(seconds: 1), (timer) {
-      if (!_isPaused) {
-        setState(() {
-          if (_secondsRemaining > 0) {
-            _secondsRemaining--;
-          } else {
-            _timer.cancel();
-            widget.onTimerComplete();
-          }
-        });
-      }
-    });
-  }
+    // Setze den Startwert für die Animation basierend auf der verbleibenden Zeit
+    double initialAnimationValue = _secondsRemaining / widget.initialDuration;
+    initialAnimationValue = initialAnimationValue.clamp(0.0, 1.0);
+    _progressController.value = initialAnimationValue;
 
-  void _togglePause() {
-    setState(() {
-      _isPaused = !_isPaused;
+    // Starte die Animation nur, wenn Zeit übrig ist
+    if (initialAnimationValue > 0) {
+      _progressController.reverse(from: initialAnimationValue);
+    }
 
-      if (_isPaused) {
-        // Pause the animation
-        _progressController.stop();
-      } else {
-        // Resume the animation
-        _progressController.reverse(
-          from: _secondsRemaining / widget.initialDuration,
-        );
-      }
-    });
-    HapticFeedback.lightImpact();
-  }
-
-  void _skipTimer() {
     HapticFeedback.mediumImpact();
-    widget.onSkip?.call();
   }
 
   String _formatTime(int seconds) {
+    bool negative = seconds < 0;
+    seconds = seconds.abs();
     final minutes = seconds ~/ 60;
     final remainingSeconds = seconds % 60;
-    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
+    return '${negative ? "-" : ""}${minutes}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  Color _getTimerColor() {
+    if (_isNegative) {
+      return Color(0xFFF95738); // Static red for negative time
+    } else if (_secondsRemaining < 5) {
+      return Color(0xFFF1A33C); // Yellow/Orange for last few seconds
+    } else {
+      return Color(0xFF3D85C6); // Blue for normal time
+    }
   }
 
   @override
   void dispose() {
-    _timer.cancel();
     _progressController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Color(0xFF14253D),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      padding: EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Color(0xFF3D85C6).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.timer,
-                  color: Color(0xFF3D85C6),
-                  size: 20,
-                ),
-              ),
-              SizedBox(width: 12),
-              Text(
-                "SATZPAUSE",
-                style: TextStyle(
-                  color: Color(0xFF3D85C6),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 20),
+    return Consumer<WorkoutTrackerState>(
+      builder: (context, state, child) {
+        return ValueListenableBuilder<int>(
+            valueListenable: state.timerNotifier,
+            builder: (context, timerValue, _) {
+              // Update local state from the notifier
+              _secondsRemaining = timerValue;
+              _isNegative = _secondsRemaining <= 0;
 
-          // Timer display
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // Circular progress indicator
-              SizedBox(
-                height: 180,
-                width: 180,
-                child: AnimatedBuilder(
+              return AnimatedBuilder(
                   animation: _progressController,
                   builder: (context, child) {
-                    return CircularProgressIndicator(
-                      value: _progressController.value,
-                      strokeWidth: 12,
-                      backgroundColor: Colors.white.withOpacity(0.1),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        _isPaused
-                            ? Color(0xFFF1A33C) // Orange when paused
-                            : Color(0xFF3D85C6), // Blue when running
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Color(0xFF14253D),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _isNegative
+                                ? _getTimerColor().withOpacity(0.15)
+                                : Colors.black.withOpacity(0.15),
+                            blurRadius: _isNegative ? 8 : 6,
+                            spreadRadius: _isNegative ? 1 : 0,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                        border: _isNegative
+                            ? Border.all(
+                                color: _getTimerColor().withOpacity(0.4),
+                                width: 1.5,
+                              )
+                            : null,
+                      ),
+                      margin: EdgeInsets.symmetric(vertical: 8),
+                      padding: EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Timer progress and display
+                          Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // Base circle
+                              Container(
+                                width: 64,
+                                height: 64,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFF1A2D4A),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _getTimerColor().withOpacity(0.15),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Timer track
+                              Container(
+                                width: 64,
+                                height: 64,
+                                child: CircularProgressIndicator(
+                                  value: 1.0,
+                                  strokeWidth: 4,
+                                  color: Colors.white.withOpacity(0.08),
+                                ),
+                              ),
+
+                              // Progress indicator
+                              _isNegative
+                                  ? Container(
+                                      width: 64,
+                                      height: 64,
+                                      child: CircularProgressIndicator(
+                                        value: 1.0, // Full circle
+                                        strokeWidth: 4,
+                                        strokeCap: StrokeCap.round,
+                                        color: _getTimerColor(),
+                                      ),
+                                    )
+                                  : Container(
+                                      width: 64,
+                                      height: 64,
+                                      child: CircularProgressIndicator(
+                                        value: _secondsRemaining /
+                                            widget.initialDuration,
+                                        strokeWidth: 4,
+                                        strokeCap: StrokeCap.round,
+                                        color: _getTimerColor(),
+                                      ),
+                                    ),
+
+                              // Time text
+                              Text(
+                                _formatTime(_secondsRemaining),
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                  color: _isNegative
+                                      ? _getTimerColor()
+                                      : Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(width: 16),
+
+                          // Timer status information
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Header with icon and text
+                                Row(
+                                  children: [
+                                    Icon(
+                                      _isNegative
+                                          ? Icons.timer_off_outlined
+                                          : Icons.timer_outlined,
+                                      color: _getTimerColor(),
+                                      size: 16,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      _isNegative
+                                          ? "PAUSE ÜBERSCHRITTEN"
+                                          : "SATZPAUSE",
+                                      style: TextStyle(
+                                        color: _getTimerColor(),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                if (_isNegative)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6.0),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          height: 4,
+                                          width: 4,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: _getTimerColor(),
+                                          ),
+                                        ),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          "Nächster Satz",
+                                          style: TextStyle(
+                                            color:
+                                                Colors.white.withOpacity(0.9),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          // Skip button
+                          InkWell(
+                            onTap: widget.onSkip,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.skip_next,
+                                    color: Colors.white.withOpacity(0.7),
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    "Skip",
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  )
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     );
-                  },
-                ),
-              ),
-
-              // Time remaining
-              Column(
-                children: [
-                  Text(
-                    _formatTime(_secondsRemaining),
-                    style: TextStyle(
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    "verbleibend",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withOpacity(0.7),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          SizedBox(height: 24),
-
-          // Control buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // Pause/Resume button
-              ElevatedButton.icon(
-                onPressed: _togglePause,
-                icon: Icon(
-                  _isPaused ? Icons.play_arrow : Icons.pause,
-                  size: 20,
-                ),
-                label: Text(
-                  _isPaused ? "FORTSETZEN" : "PAUSE",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isPaused
-                      ? Color(0xFF44CF74) // Green when paused (resume)
-                      : Color(0xFFF1A33C), // Orange when running (pause)
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-
-              // Skip button
-              ElevatedButton.icon(
-                onPressed: _skipTimer,
-                icon: Icon(
-                  Icons.skip_next,
-                  size: 20,
-                ),
-                label: Text(
-                  "ÜBERSPRINGEN",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFF1C2F49),
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                      color: Colors.white.withOpacity(0.1),
-                      width: 1,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+                  });
+            });
+      },
     );
   }
 }

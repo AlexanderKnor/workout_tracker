@@ -1,7 +1,9 @@
 // lib/screens/home/components/plan_card/day_item.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../../../models/models.dart';
+import '../../../../providers/workout_provider.dart';
 
 class DayItem extends StatelessWidget {
   final TrainingDay day;
@@ -13,6 +15,39 @@ class DayItem extends StatelessWidget {
     required this.onTap,
   }) : super(key: key);
 
+  // Neue Methode zum Überprüfen, ob ein Workout gestartet werden kann
+  void _handleDayTap(BuildContext context, TrainingDay day) {
+    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+
+    // Wenn bereits ein Workout aktiv ist, zeige eine Warnung
+    if (state.isWorkoutActive) {
+      // Zeige Snackbar mit Hinweis
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('Beende das aktive Workout, bevor du ein neues startest.'),
+          backgroundColor: Color(0xFFF95738),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Sonst normal fortsetzten
+    HapticFeedback.selectionClick();
+    onTap(day);
+  }
+
   @override
   Widget build(BuildContext context) {
     final exercises = day.exercises;
@@ -20,10 +55,7 @@ class DayItem extends StatelessWidget {
     final isSmallScreen = size.width < 360;
 
     return InkWell(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap(day); // Übergebe den Tag explizit
-      },
+      onTap: () => _handleDayTap(context, day),
       child: Padding(
         padding: EdgeInsets.symmetric(
             vertical: 12, horizontal: isSmallScreen ? 12 : 16),

@@ -24,6 +24,10 @@ class WorkoutTrackerState extends ChangeNotifier {
   String _exerciseSearchQuery = '';
   bool _isSelectingFromDatabase = false;
 
+  // Flags für Workout-Minimierung
+  bool _isWorkoutMinimized = false;
+  bool _isWorkoutActive = false;
+
   // Constructor
   WorkoutTrackerState() {
     // Initialize modules
@@ -36,6 +40,9 @@ class WorkoutTrackerState extends ChangeNotifier {
     _loadData();
     _loadExerciseDatabase();
   }
+
+  // New getter to expose the timer notifier
+  ValueNotifier<int> get timerNotifier => _workoutSession.timerNotifier;
 
   // A method for safely updating state
   void safeUpdate(Function updateFunction) {
@@ -93,6 +100,10 @@ class WorkoutTrackerState extends ChangeNotifier {
   // Loading state
   bool get isLoading => _isLoading;
 
+  // Getters für Workout-Minimierung
+  bool get isWorkoutMinimized => _isWorkoutMinimized;
+  bool get isWorkoutActive => _isWorkoutActive;
+
   // Plan Management Getters (delegated)
   List<TrainingPlan> get plans => _planManager.plans;
   TrainingPlan? get currentPlan => _planManager.currentPlan;
@@ -118,6 +129,9 @@ class WorkoutTrackerState extends ChangeNotifier {
   // Rest Timer Getters (delegated)
   bool get showRestTimer => _workoutSession.showRestTimer;
   int get currentRestTime => _workoutSession.currentRestTime;
+  int get initialRestTime => _workoutSession.initialRestTime;
+  UniqueKey get timerKey => _workoutSession.timerKey;
+  bool get isTimerRunning => _workoutSession.isTimerRunning;
 
   // Strength Calculator Getters (delegated)
   bool get showStrengthCalculator => _strengthCalculator.showStrengthCalculator;
@@ -154,7 +168,7 @@ class WorkoutTrackerState extends ChangeNotifier {
   int get newExerciseRIR => _planManager.newExerciseRIR;
   String get newExerciseDescription => _planManager.newExerciseDescription;
   int get newExerciseRestTime =>
-      _planManager.newExerciseRestTime; // Neuer Getter
+      _planManager.newExerciseRestTime; // Getter für Pausenzeit
 
   // Exercise database getters
   bool get isExerciseDbLoaded => _isExerciseDbLoaded;
@@ -208,6 +222,38 @@ class WorkoutTrackerState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ======== Methoden für Workout-Minimierung ========
+
+  // Workout minimieren - mit Timer-Anpassung
+  void minimizeWorkout() {
+    _isWorkoutMinimized = true;
+    // Timer läuft im Hintergrund weiter
+    _workoutSession.onWorkoutMinimized();
+    notifyListeners();
+  }
+
+  // Workout maximieren - mit Timer-Anpassung
+  void maximizeWorkout() {
+    _isWorkoutMinimized = false;
+    // Timer-Status nach Maximierung prüfen
+    _workoutSession.onWorkoutMaximized();
+    notifyListeners();
+  }
+
+  // Workout-Status zurücksetzen (z.B. nach Abschluss oder Abbruch)
+  void resetWorkoutState() {
+    _isWorkoutMinimized = false;
+    _isWorkoutActive = false;
+    notifyListeners();
+  }
+
+  // Workout abbrechen ohne zu speichern
+  void cancelWorkout() {
+    _workoutSession.resetWorkoutState();
+    resetWorkoutState();
+    notifyListeners();
+  }
+
   // ======== Delegated Methods ========
 
   // Plan Management Methods
@@ -241,13 +287,19 @@ class WorkoutTrackerState extends ChangeNotifier {
   set newExerciseDescription(String value) =>
       _planManager.newExerciseDescription = value;
   set newExerciseRestTime(int value) =>
-      _planManager.newExerciseRestTime = value; // Neuer Setter
+      _planManager.newExerciseRestTime = value; // Setter für Pausenzeit
 
   // Workout Session Methods
-  void startWorkout(TrainingPlan plan, TrainingDay day) =>
-      _workoutSession.startWorkout(plan, day);
+  void startWorkout(TrainingPlan plan, TrainingDay day) {
+    _workoutSession.startWorkout(plan, day);
+    _isWorkoutActive = true;
+    _isWorkoutMinimized = false;
+    notifyListeners();
+  }
+
   Future<void> finishWorkout() async {
     await _workoutSession.finishWorkout();
+    resetWorkoutState();
     notifyListeners(); // Make sure UI updates after workout is finished
   }
 
@@ -299,7 +351,7 @@ class WorkoutTrackerState extends ChangeNotifier {
         print("Ist aktuelle Übung abgeschlossen? $isCurrentExerciseCompleted");
 
         if (isCurrentExerciseCompleted) {
-          // Wenn Übung bereits abgeschlossen, direkt zur ersten unvollständigen Übung navigieren
+          // Wenn Übung bereits abgeschlossen, direkt zur ersten unvollständige Übung navigieren
           print(
               "Übung abgeschlossen, navigiere direkt zur ersten unvollständigen Übung");
           _forceMoveToFirstIncompleteExercise();
@@ -318,7 +370,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     });
   }
 
-  // Neue Methode zum direkten Navigieren zur ersten unvollständigen Übung
+  // Neue Methode zum direkten Navigieren zur ersten unvollständige Übung
   void _forceMoveToFirstIncompleteExercise() {
     if (currentDay == null) return;
 
@@ -403,7 +455,7 @@ class WorkoutTrackerState extends ChangeNotifier {
     int? customMinReps,
     int? customMaxReps,
     int? customRIR,
-    int? customRestTime, // Neuer Parameter
+    int? customRestTime, // Parameter für Pausenzeit
   }) {
     if (_planManager.currentPlan == null || _planManager.currentDay == null)
       return;

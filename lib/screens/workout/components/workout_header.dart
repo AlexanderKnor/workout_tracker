@@ -6,6 +6,7 @@ import '../../../models/models.dart';
 class WorkoutHeader extends StatelessWidget {
   final bool showElevation;
   final VoidCallback onBackPressed;
+  final VoidCallback? onEndPressed; // Neu: Callback für Beenden-Button
   final TrainingPlan? currentPlan;
   final TrainingDay? currentDay;
 
@@ -15,6 +16,7 @@ class WorkoutHeader extends StatelessWidget {
     required this.onBackPressed,
     required this.currentPlan,
     required this.currentDay,
+    this.onEndPressed, // Neu: Optional, da in älteren Implementierungen nicht vorhanden
   }) : super(key: key);
 
   @override
@@ -35,7 +37,7 @@ class WorkoutHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Back button
+          // Zurück-Button (jetzt zum Minimieren des Workouts)
           Material(
             color: Colors.transparent,
             child: InkWell(
@@ -55,7 +57,7 @@ class WorkoutHeader extends StatelessWidget {
                   ),
                 ),
                 child: Icon(
-                  Icons.arrow_back_ios_new_rounded,
+                  Icons.remove, // Geändert zu "Minimieren"-Icon
                   color: Colors.white,
                   size: 16,
                 ),
@@ -63,12 +65,12 @@ class WorkoutHeader extends StatelessWidget {
             ),
           ),
 
-          // Title - centered with Expanded
+          // Titel - zentriert mit Expanded
           Expanded(
             child: Column(
               children: [
                 Text(
-                  "ACTIVE WORKOUT",
+                  "AKTIVES WORKOUT",
                   style: TextStyle(
                     color: Color(0xFF44CF74),
                     fontSize: 12,
@@ -101,8 +103,37 @@ class WorkoutHeader extends StatelessWidget {
             ),
           ),
 
-          // Spacer for balance
-          SizedBox(width: 40),
+          // NEU: Workout-Beenden-Button
+          if (onEndPressed != null)
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  onEndPressed!();
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Color(0xFFF95738).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Color(0xFFF95738).withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFFF95738),
+                    size: 16,
+                  ),
+                ),
+              ),
+            )
+          else
+            // Platzhalter für die Balance, wenn kein Beenden-Button angezeigt wird
+            SizedBox(width: 40),
         ],
       ),
     );

@@ -10,6 +10,7 @@ import 'components/workout_header.dart';
 import 'components/exercise_card/exercise_card.dart';
 import 'components/workout_log_card.dart';
 import 'components/workout_completed_card.dart';
+import 'dialogs/end_workout_dialog.dart'; // Neuer Dialog für Workout-Beendigung
 
 class WorkoutScreen extends StatefulWidget {
   final VoidCallback onBackPressed;
@@ -149,10 +150,6 @@ class _WorkoutScreenState extends State<WorkoutScreen>
           duration: Duration(milliseconds: 300),
           curve: Curves.easeInOut,
         );
-
-        // Log for debugging
-        print(
-            'Tab switched to exercise at index $exerciseIndex: ${_workoutState.currentExercise!.name}');
       }
     }
   }
@@ -199,6 +196,27 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         _exerciseTabController!.length == state.currentDay!.exercises.length;
   }
 
+  // Neuer Methode für vorzeitiges Beenden eines Workouts
+  void _showEndWorkoutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => EndWorkoutDialog(
+        onSaveAndFinish: () async {
+          // Workout mit gespeicherten Sets beenden
+          await _workoutState.finishWorkout();
+          Navigator.of(context).pop(); // Dialog schließen
+          widget.onFinished(); // Zum Home-Screen zurückkehren
+        },
+        onDiscardAndFinish: () {
+          // Workout abbrechen ohne zu speichern
+          _workoutState.cancelWorkout();
+          Navigator.of(context).pop(); // Dialog schließen
+          widget.onFinished(); // Zum Home-Screen zurückkehren
+        },
+      ),
+    );
+  }
+
   // Safe handler for workout finish
   void _handleFinishWorkout() {
     if (!mounted) return;
@@ -240,92 +258,102 @@ class _WorkoutScreenState extends State<WorkoutScreen>
         // Update local reference
         _workoutState = state;
 
-        return Scaffold(
-          extendBodyBehindAppBar: true,
-          body: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFF0A1626),
-                  Color(0xFF14253D),
-                ],
+        return WillPopScope(
+          onWillPop: () async {
+            // Minimiere Workout statt es zu beenden
+            widget.onBackPressed();
+            return false;
+          },
+          child: Scaffold(
+            extendBodyBehindAppBar: true,
+            body: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF0A1626),
+                    Color(0xFF14253D),
+                  ],
+                ),
               ),
-            ),
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SafeArea(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    WorkoutHeader(
-                      showElevation: _showElevation,
-                      onBackPressed: () {
-                        // Safe back navigation
-                        if (mounted) {
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SafeArea(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header mit neuem Ende-Button
+                      WorkoutHeader(
+                        showElevation: _showElevation,
+                        onBackPressed: () {
+                          // Minimize workout instead of ending it
                           widget.onBackPressed();
-                        }
-                      },
-                      currentPlan: state.currentPlan,
-                      currentDay: state.currentDay,
-                    ),
+                        },
+                        currentPlan: state.currentPlan,
+                        currentDay: state.currentDay,
+                        onEndPressed:
+                            _showEndWorkoutDialog, // Neue Callback-Funktion
+                      ),
 
-                    // Only show tabs if workout is active and not all exercises are completed
-                    if (state.currentDay != null &&
-                        state.currentDay!.exercises.isNotEmpty &&
-                        !state.isAllExercisesCompleted)
-                      _buildExerciseTabs(state),
+                      // Only show tabs if workout is active and not all exercises are completed
+                      if (state.currentDay != null &&
+                          state.currentDay!.exercises.isNotEmpty &&
+                          !state.isAllExercisesCompleted)
+                        _buildExerciseTabs(state),
 
-                    // Content
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                        child: ListView(
-                          controller: _scrollController,
-                          physics: BouncingScrollPhysics(),
-                          padding: EdgeInsets.only(bottom: 100),
-                          children: [
-                            // Zeige den Rest Timer, wenn aktiviert
-                            if (state.showRestTimer)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                    top: 16.0, bottom: 16.0),
-                                child: RestTimer(
-                                  initialDuration: state.currentRestTime,
-                                  onTimerComplete: () {
-                                    state.endRestTimer();
-                                  },
-                                  onSkip: () {
-                                    state.endRestTimer();
-                                  },
+                      // Content
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                          child: ListView(
+                            controller: _scrollController,
+                            physics: BouncingScrollPhysics(),
+                            padding: EdgeInsets.only(bottom: 100),
+                            children: [
+                              // Show the Rest Timer, if enabled
+                              if (state.showRestTimer)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                      top: 16.0, bottom: 16.0),
+                                  child: RestTimer(
+                                    // Use a key based on workout progress to force recreation when a set is logged
+                                    key: ValueKey<String>(
+                                        'rest_timer_${state.currentExercise?.id ?? ''}_${state.workoutLog.length}'),
+                                    initialDuration: state.currentRestTime,
+                                    onTimerComplete: () {
+                                      state.endRestTimer();
+                                    },
+                                    onSkip: () {
+                                      state.endRestTimer();
+                                    },
+                                  ),
                                 ),
-                              ),
 
-                            // Exercise card - show only if workout is active and not all exercises are completed
-                            if (state.currentDay != null &&
-                                state.currentDay!.exercises.isNotEmpty &&
-                                !state.isAllExercisesCompleted &&
-                                state.currentExercise != null)
-                              _buildTabView(state),
+                              // Exercise card - show only if workout is active and not all exercises are completed
+                              if (state.currentDay != null &&
+                                  state.currentDay!.exercises.isNotEmpty &&
+                                  !state.isAllExercisesCompleted &&
+                                  state.currentExercise != null)
+                                _buildTabView(state),
 
-                            // Workout log card - if any sets are logged
-                            if (state.workoutLog.isNotEmpty)
-                              WorkoutLogCard(
-                                workoutLog: state.workoutLog,
-                              ),
+                              // Workout log card - if any sets are logged
+                              if (state.workoutLog.isNotEmpty)
+                                WorkoutLogCard(
+                                  workoutLog: state.workoutLog,
+                                ),
 
-                            // Show completion card when all exercises are completed
-                            if (state.isAllExercisesCompleted)
-                              WorkoutCompletedCard(
-                                onFinishWorkout: _handleFinishWorkout,
-                              ),
-                          ],
+                              // Show completion card when all exercises are completed
+                              if (state.isAllExercisesCompleted)
+                                WorkoutCompletedCard(
+                                  onFinishWorkout: _handleFinishWorkout,
+                                ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -7,6 +7,7 @@ import 'screens/home/home_screen.dart';
 import 'screens/create_plan_screen.dart';
 import 'screens/edit_plan_screen.dart';
 import 'screens/workout/workout_screen.dart';
+import 'widgets/minimized_workout.dart'; // Neue Widget-Importierung
 
 void main() async {
   // Diese Zeile ist wichtig, damit Flutter-Bindungen initialisiert sind,
@@ -262,19 +263,204 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        // If we're on the home screen, allow the app to close
-        if (_currentView == 'plans') {
-          return true;
-        }
+    return Consumer<WorkoutTrackerState>(
+      builder: (context, state, child) {
+        return WillPopScope(
+          onWillPop: () async {
+            // Wenn ein Workout läuft und wir nicht im Workout-Screen sind,
+            // zum Workout zurückkehren statt die App zu beenden
+            if (state.isWorkoutActive && _currentView != 'workout') {
+              _navigateTo('workout');
+              return false;
+            }
 
-        // Otherwise, handle back navigation and prevent app from closing
-        _goBack();
-        return false;
+            // Wenn wir auf dem Home-Screen sind, erlaube der App, geschlossen zu werden
+            if (_currentView == 'plans') {
+              return true;
+            }
+
+            // Bei aktivem Workout und Zurück-Taste im Workout-Screen wird das Workout minimiert
+            if (_currentView == 'workout' && state.isWorkoutActive) {
+              state.minimizeWorkout();
+              _navigateToHome();
+              return false;
+            }
+
+            // Ansonsten handle die Zurück-Navigation und verhindere das Schließen der App
+            _goBack();
+            return false;
+          },
+          child: Scaffold(
+            body: Stack(
+              children: [
+                // Hauptbildschirm
+                _buildCurrentView(),
+
+                // Minimierte Workout-Ansicht, wenn ein Workout aktiv ist und minimiert wurde
+                if (state.isWorkoutActive && state.isWorkoutMinimized)
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: GestureDetector(
+                      onTap: () {
+                        state.maximizeWorkout();
+                        _navigateTo('workout');
+                      },
+                      child: MinimizedWorkout(
+                        onResume: () {
+                          state.maximizeWorkout();
+                          _navigateTo('workout');
+                        },
+                        onEnd: () => _showEndWorkoutDialog(context, state),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
       },
-      child: Scaffold(
-        body: _buildCurrentView(),
+    );
+  }
+
+  // Ende-Workout-Dialog anzeigen
+  void _showEndWorkoutDialog(BuildContext context, WorkoutTrackerState state) {
+    // Überprüfen, ob bereits Sets geloggt wurden
+    bool hasLoggedSets = state.workoutLog.isNotEmpty;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        backgroundColor: Color(0xFF1C2F49),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFFF95738).withOpacity(0.2),
+              ),
+              child: Icon(
+                Icons.fitness_center,
+                color: Color(0xFFF95738),
+                size: 28,
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Workout beenden?',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              hasLoggedSets
+                  ? 'Möchtest du das Workout beenden? Du hast bereits Sets geloggt.'
+                  : 'Möchtest du das Workout beenden? Du hast noch keine Sets geloggt.',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 15,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 24),
+            if (hasLoggedSets) ...[
+              // Wenn Sets geloggt wurden, Optionen anzeigen
+              ElevatedButton(
+                onPressed: () async {
+                  // Workout mit gespeicherten Sets beenden
+                  await state.finishWorkout();
+                  Navigator.of(context).pop();
+
+                  // Stellen Sie sicher, dass nach dem Beenden alle Zustände korrekt zurückgesetzt werden
+                  state.resetWorkoutState();
+                  if (mounted) setState(() {});
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF44CF74),
+                  foregroundColor: Colors.white,
+                  minimumSize: Size(double.infinity, 0),
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text('SPEICHERN UND BEENDEN'),
+              ),
+              SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () {
+                  // Workout abbrechen, ohne Sets zu speichern
+                  state.cancelWorkout();
+                  Navigator.of(context).pop();
+
+                  // Stellen Sie sicher, dass nach dem Abbrechen alle Zustände korrekt zurückgesetzt werden
+                  state.resetWorkoutState();
+                  if (mounted) setState(() {});
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFFF95738),
+                  foregroundColor: Colors.white,
+                  minimumSize: Size(double.infinity, 0),
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text('VERWERFEN UND BEENDEN'),
+              ),
+            ] else ...[
+              // Wenn keine Sets geloggt wurden, nur eine Beenden-Option anzeigen
+              ElevatedButton(
+                onPressed: () {
+                  // Workout abbrechen, ohne Sets zu speichern
+                  state.cancelWorkout();
+                  Navigator.of(context).pop();
+
+                  // Stellen Sie sicher, dass nach dem Abbrechen alle Zustände korrekt zurückgesetzt werden
+                  state.resetWorkoutState();
+                  if (mounted) setState(() {});
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFFF95738),
+                  foregroundColor: Colors.white,
+                  minimumSize: Size(double.infinity, 0),
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text('WORKOUT BEENDEN'),
+              ),
+            ],
+            SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white.withOpacity(0.7),
+                padding: EdgeInsets.symmetric(vertical: 14),
+                minimumSize: Size(double.infinity, 0),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                ),
+              ),
+              child: Text('ABBRECHEN'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -320,18 +506,18 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildCurrentView() {
+    final state = Provider.of<WorkoutTrackerState>(context, listen: false);
+
     switch (_currentView) {
       case 'plans':
         return HomeScreen(
           onCreatePressed: () => _navigateTo('create'),
           onEditPressed: (plan) {
-            Provider.of<WorkoutTrackerState>(context, listen: false)
-                .setCurrentPlan(plan);
+            state.setCurrentPlan(plan);
             _navigateTo('edit');
           },
           onWorkoutPressed: (plan, day) {
-            Provider.of<WorkoutTrackerState>(context, listen: false)
-                .startWorkout(plan, day);
+            state.startWorkout(plan, day);
             _navigateTo('workout');
           },
         );
@@ -343,25 +529,30 @@ class _MainScreenState extends State<MainScreen> {
       case 'edit':
         return EditPlanScreen(
           onBackPressed: _goBack,
-          onDiscardAndGoHome:
-              _navigateToHome, // Add new callback for direct home navigation
+          onDiscardAndGoHome: _navigateToHome,
         );
       case 'workout':
         return WorkoutScreen(
-          onBackPressed: _goBack,
-          onFinished: () => _navigateTo('plans'),
+          onBackPressed: () {
+            // Minimiere das Workout, anstatt es zu beenden
+            state.minimizeWorkout();
+            _navigateToHome();
+          },
+          onFinished: () {
+            // Workout wurde ordnungsgemäß abgeschlossen
+            state.resetWorkoutState();
+            _navigateTo('plans');
+          },
         );
       default:
         return HomeScreen(
           onCreatePressed: () => _navigateTo('create'),
           onEditPressed: (plan) {
-            Provider.of<WorkoutTrackerState>(context, listen: false)
-                .setCurrentPlan(plan);
+            state.setCurrentPlan(plan);
             _navigateTo('edit');
           },
           onWorkoutPressed: (plan, day) {
-            Provider.of<WorkoutTrackerState>(context, listen: false)
-                .startWorkout(plan, day);
+            state.startWorkout(plan, day);
             _navigateTo('workout');
           },
         );
